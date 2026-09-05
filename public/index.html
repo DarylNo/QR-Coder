@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>QR-Coder — custom QR codes with logos and styled dots</title>
+    <meta name="description" content="Generate QR codes with custom module shapes, gradients, logos and full control over every design setting." />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%230f172a'/%3E%3Cg fill='%23fff'%3E%3Crect x='3' y='3' width='4' height='4' rx='1'/%3E%3Crect x='9' y='3' width='4' height='4' rx='1'/%3E%3Crect x='3' y='9' width='4' height='4' rx='1'/%3E%3Crect x='9.5' y='9.5' width='1.5' height='1.5'/%3E%3Crect x='11.5' y='11.5' width='1.5' height='1.5'/%3E%3C/g%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <header class="masthead">
+      <div class="masthead-title">
+        <h1>QR-Coder</h1>
+        <p>Custom QR codes with logos, styled dots, and control over every design setting.</p>
+      </div>
+      <nav class="masthead-links">
+        <a href="/api/schema">API schema</a>
+        <a href="/api/presets">Presets</a>
+        <a href="https://github.com/DarylNo/QR-Coder">Source</a>
+      </nav>
+    </header>
+
+    <main class="layout">
+      <section class="panel controls" aria-label="Design settings">
+        <div class="presets" id="presets" role="group" aria-label="Presets"></div>
+
+        <details class="group" open>
+          <summary>Content</summary>
+          <label class="field wide">
+            <span>Data</span>
+            <textarea id="data" rows="2" spellcheck="false">https://example.com/qr-coder</textarea>
+          </label>
+          <p class="hint">Any text: a URL, a phone number, a Wi-Fi string, a vCard.</p>
+        </details>
+
+        <details class="group" open>
+          <summary>Modules</summary>
+          <div class="grid">
+            <label class="field">
+              <span>Shape</span>
+              <select data-path="dots.type" data-kind="string"></select>
+            </label>
+            <label class="field">
+              <span>Colour</span>
+              <input type="color" data-path="dots.color" data-kind="color" value="#0f172a" />
+            </label>
+            <label class="field">
+              <span>Scale <output data-output="dots.scale">1</output></span>
+              <input type="range" min="0.1" max="1" step="0.01" value="1" data-path="dots.scale" data-kind="number" />
+            </label>
+            <label class="field">
+              <span>Opacity <output data-output="dots.opacity">1</output></span>
+              <input type="range" min="0" max="1" step="0.01" value="1" data-path="dots.opacity" data-kind="number" />
+            </label>
+            <label class="field" data-visible-when="dots.type=random-dot">
+              <span>Random seed</span>
+              <input type="number" min="0" step="1" value="1" data-path="dots.randomSeed" data-kind="number" />
+            </label>
+          </div>
+          <fieldset class="gradient" data-gradient="dots">
+            <legend><label><input type="checkbox" data-gradient-toggle="dots" /> Gradient</label></legend>
+            <div class="grid gradient-body" hidden>
+              <label class="field">
+                <span>Type</span>
+                <select data-path="dots.gradient.type" data-kind="string">
+                  <option value="linear">linear</option>
+                  <option value="radial">radial</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Angle <output data-output="dots.gradient.rotation">0</output>°</span>
+                <input type="range" min="-180" max="180" step="1" value="0" data-path="dots.gradient.rotation" data-kind="number" />
+              </label>
+              <div class="stops" data-stops="dots"></div>
+            </div>
+          </fieldset>
+        </details>
+
+        <details class="group">
+          <summary>Finder patterns</summary>
+          <div class="grid">
+            <label class="field">
+              <span>Ring shape</span>
+              <select data-path="cornersSquare.type" data-kind="string"></select>
+            </label>
+            <label class="field">
+              <span>Ring colour</span>
+              <input type="color" data-path="cornersSquare.color" data-kind="color" value="#0f172a" />
+            </label>
+            <label class="field">
+              <span>Centre shape</span>
+              <select data-path="cornersDot.type" data-kind="string"></select>
+            </label>
+            <label class="field">
+              <span>Centre colour</span>
+              <input type="color" data-path="cornersDot.color" data-kind="color" value="#0f172a" />
+            </label>
+          </div>
+          <fieldset class="gradient" data-gradient="cornersSquare">
+            <legend><label><input type="checkbox" data-gradient-toggle="cornersSquare" /> Ring gradient</label></legend>
+            <div class="grid gradient-body" hidden>
+              <label class="field">
+                <span>Type</span>
+                <select data-path="cornersSquare.gradient.type" data-kind="string">
+                  <option value="linear">linear</option>
+                  <option value="radial">radial</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Angle <output data-output="cornersSquare.gradient.rotation">0</output>°</span>
+                <input type="range" min="-180" max="180" step="1" value="0" data-path="cornersSquare.gradient.rotation" data-kind="number" />
+              </label>
+              <div class="stops" data-stops="cornersSquare"></div>
+            </div>
+          </fieldset>
+          <fieldset class="per-corner">
+            <legend><label><input type="checkbox" id="per-corner-toggle" /> Style each corner separately</label></legend>
+            <div id="per-corner-body" hidden></div>
+          </fieldset>
+        </details>
+
+        <details class="group">
+          <summary>Alignment patterns</summary>
+          <div class="grid">
+            <label class="field">
+              <span>Style</span>
+              <select data-path="alignment.type" data-kind="string"></select>
+            </label>
+            <label class="field">
+              <span>Centre shape</span>
+              <select data-path="alignment.centerType" data-kind="string"></select>
+            </label>
+            <label class="field">
+              <span>Colour</span>
+              <input type="color" data-path="alignment.color" data-kind="color" value="#0f172a" />
+            </label>
+          </div>
+          <p class="hint">Solid alignment patterns stay easy for scanners to find when the modules use a sparse shape.</p>
+        </details>
+
+        <details class="group">
+          <summary>Background</summary>
+          <div class="grid">
+            <label class="field">
+              <span>Colour</span>
+              <input type="color" data-path="background.color" data-kind="color" value="#ffffff" />
+            </label>
+            <label class="field checkbox">
+              <input type="checkbox" id="transparent-background" />
+              <span>Transparent</span>
+            </label>
+            <label class="field">
+              <span>Corner rounding <output data-output="background.round">0</output></span>
+              <input type="range" min="0" max="1" step="0.01" value="0" data-path="background.round" data-kind="number" />
+            </label>
+            <label class="field">
+              <span>Opacity <output data-output="background.opacity">1</output></span>
+              <input type="range" min="0" max="1" step="0.01" value="1" data-path="background.opacity" data-kind="number" />
+            </label>
+          </div>
+          <fieldset class="gradient" data-gradient="background">
+            <legend><label><input type="checkbox" data-gradient-toggle="background" /> Gradient</label></legend>
+            <div class="grid gradient-body" hidden>
+              <label class="field">
+                <span>Type</span>
+                <select data-path="background.gradient.type" data-kind="string">
+                  <option value="linear">linear</option>
+                  <option value="radial">radial</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Angle <output data-output="background.gradient.rotation">0</output>°</span>
+                <input type="range" min="-180" max="180" step="1" value="0" data-path="background.gradient.rotation" data-kind="number" />
+              </label>
+              <div class="stops" data-stops="background"></div>
+            </div>
+          </fieldset>
+        </details>
+
+        <details class="group">
+          <summary>Logo</summary>
+          <div class="grid">
+            <label class="field wide">
+              <span>Image file</span>
+              <input type="file" id="logo-file" accept="image/png,image/jpeg,image/svg+xml,image/webp,image/gif" />
+            </label>
+            <label class="field wide">
+              <span>…or image URL</span>
+              <input type="url" id="logo-url" placeholder="https://example.com/logo.png" spellcheck="false" />
+            </label>
+            <label class="field">
+              <span>Size <output data-output="image.size">0.25</output></span>
+              <input type="range" min="0.05" max="0.5" step="0.01" value="0.25" data-path="image.size" data-kind="number" />
+            </label>
+            <label class="field">
+              <span>Clear margin <output data-output="image.margin">1</output></span>
+              <input type="range" min="0" max="6" step="0.5" value="1" data-path="image.margin" data-kind="number" />
+            </label>
+            <label class="field">
+              <span>Shape</span>
+              <select data-path="image.shape" data-kind="string">
+                <option value="square">square</option>
+                <option value="rounded">rounded</option>
+                <option value="circle">circle</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Opacity <output data-output="image.opacity">1</output></span>
+              <input type="range" min="0" max="1" step="0.01" value="1" data-path="image.opacity" data-kind="number" />
+            </label>
+            <label class="field">
+              <span>Plate colour</span>
+              <input type="color" id="logo-plate" value="#ffffff" />
+            </label>
+            <label class="field checkbox">
+              <input type="checkbox" id="logo-plate-on" />
+              <span>Draw plate</span>
+            </label>
+            <label class="field checkbox">
+              <input type="checkbox" data-path="image.hideBackgroundDots" data-kind="boolean" checked />
+              <span>Clear modules behind the logo</span>
+            </label>
+            <button type="button" class="ghost" id="logo-clear">Remove logo</button>
+          </div>
+        </details>
+
+        <details class="group">
+          <summary>Caption</summary>
+          <div class="grid">
+            <label class="field wide">
+              <span>Text</span>
+              <input type="text" data-path="caption.text" data-kind="string" placeholder="SCAN ME" maxlength="200" />
+            </label>
+            <label class="field">
+              <span>Position</span>
+              <select data-path="caption.position" data-kind="string">
+                <option value="bottom">bottom</option>
+                <option value="top">top</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Colour</span>
+              <input type="color" data-path="caption.color" data-kind="color" value="#0f172a" />
+            </label>
+            <label class="field">
+              <span>Font size <output data-output="caption.fontSize">22</output></span>
+              <input type="range" min="8" max="80" step="1" value="22" data-path="caption.fontSize" data-kind="number" />
+            </label>
+            <label class="field">
+              <span>Weight</span>
+              <select data-path="caption.fontWeight" data-kind="string">
+                <option>400</option><option>500</option><option selected>600</option><option>700</option><option>800</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Letter spacing <output data-output="caption.letterSpacing">0</output></span>
+              <input type="range" min="-5" max="20" step="0.5" value="0" data-path="caption.letterSpacing" data-kind="number" />
+            </label>
+            <label class="field">
+              <span>Gap <output data-output="caption.gap">8</output></span>
+              <input type="range" min="0" max="60" step="1" value="8" data-path="caption.gap" data-kind="number" />
+            </label>
+            <label class="field wide">
+              <span>Font family</span>
+              <input type="text" data-path="caption.fontFamily" data-kind="string" placeholder="system-ui, sans-serif" />
+            </label>
+          </div>
+        </details>
+
+        <details class="group">
+          <summary>Canvas</summary>
+          <div class="grid">
+            <label class="field">
+              <span>Width</span>
+              <input type="number" min="32" max="4096" step="1" value="512" data-path="width" data-kind="number" />
+            </label>
+            <label class="field">
+              <span>Height</span>
+              <input type="number" min="32" max="4096" step="1" value="512" data-path="height" data-kind="number" />
+            </label>
+            <label class="field">
+              <span>Padding <output data-output="margin">0</output></span>
+              <input type="range" min="0" max="120" step="1" value="0" data-path="margin" data-kind="number" />
+            </label>
+            <label class="field">
+              <span>Quiet zone <output data-output="quietZone">4</output></span>
+              <input type="range" min="0" max="12" step="1" value="4" data-path="quietZone" data-kind="number" />
+            </label>
+            <label class="field">
+              <span>Outline</span>
+              <select data-path="shape" data-kind="string">
+                <option value="square">square</option>
+                <option value="circle">circle</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Rotation <output data-output="rotation">0</output>°</span>
+              <input type="range" min="-180" max="180" step="1" value="0" data-path="rotation" data-kind="number" />
+            </label>
+          </div>
+        </details>
+
+        <details class="group">
+          <summary>Encoding</summary>
+          <div class="grid">
+            <label class="field">
+              <span>Error correction</span>
+              <select data-path="encoding.errorCorrectionLevel" data-kind="string">
+                <option value="L">L — 7%</option>
+                <option value="M" selected>M — 15%</option>
+                <option value="Q">Q — 25%</option>
+                <option value="H">H — 30%</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Version</span>
+              <select data-path="encoding.version" data-kind="numberOrAuto"></select>
+            </label>
+            <label class="field">
+              <span>Mask</span>
+              <select data-path="encoding.mask" data-kind="numberOrAuto"></select>
+            </label>
+            <label class="field">
+              <span>Mode</span>
+              <select data-path="encoding.mode" data-kind="stringOrAuto">
+                <option value="auto">auto</option>
+                <option value="numeric">numeric</option>
+                <option value="alphanumeric">alphanumeric</option>
+                <option value="byte">byte</option>
+              </select>
+            </label>
+            <label class="field checkbox">
+              <input type="checkbox" data-path="encoding.utf8Eci" data-kind="boolean" />
+              <span>Declare UTF-8 (ECI)</span>
+            </label>
+          </div>
+          <p class="hint">Higher error correction survives more damage and leaves room for a bigger logo.</p>
+        </details>
+      </section>
+
+      <section class="panel preview" aria-label="Preview and export">
+        <div class="preview-stage" id="stage"></div>
+
+        <div id="warnings" class="warnings" hidden></div>
+
+        <dl class="meta" id="meta"></dl>
+
+        <div class="actions">
+          <button type="button" id="download-svg">Download SVG</button>
+          <button type="button" id="download-png">Download PNG</button>
+          <label class="field inline">
+            <span>PNG scale</span>
+            <select id="png-scale">
+              <option value="1">1×</option>
+              <option value="2" selected>2×</option>
+              <option value="4">4×</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="actions secondary">
+          <button type="button" class="ghost" id="copy-svg">Copy SVG</button>
+          <button type="button" class="ghost" id="copy-json">Copy JSON</button>
+          <button type="button" class="ghost" id="copy-curl">Copy cURL</button>
+          <button type="button" class="ghost" id="copy-url">Copy image URL</button>
+          <button type="button" class="ghost" id="reset">Reset</button>
+        </div>
+
+        <details class="api">
+          <summary>Use it from your own code</summary>
+          <pre id="api-sample"></pre>
+        </details>
+      </section>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

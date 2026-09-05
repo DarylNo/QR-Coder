@@ -449,15 +449,15 @@ function contrastWarnings(design: ResolvedDesign): string[] {
   if (design.background.gradient) return [];
   const background = design.background.color;
   const checks: [string, string, boolean][] = [
-    ['modules', design.dots.color, Boolean(design.dots.gradient)],
-    ['finder patterns', design.cornersSquare.color, Boolean(design.cornersSquare.gradient)],
-    ['finder centres', design.cornersDot.color, Boolean(design.cornersDot.gradient)],
+    ['module', design.dots.color, Boolean(design.dots.gradient)],
+    ['finder pattern', design.cornersSquare.color, Boolean(design.cornersSquare.gradient)],
+    ['finder centre', design.cornersDot.color, Boolean(design.cornersDot.gradient)],
   ];
   for (const [corner, override] of Object.entries(design.cornersSquare.corners)) {
-    checks.push([`the ${corner} finder pattern`, override.color, Boolean(override.gradient)]);
+    checks.push([`${corner} finder pattern`, override.color, Boolean(override.gradient)]);
   }
   for (const [corner, override] of Object.entries(design.cornersDot.corners)) {
-    checks.push([`the ${corner} finder centre`, override.color, Boolean(override.gradient)]);
+    checks.push([`${corner} finder centre`, override.color, Boolean(override.gradient)]);
   }
 
   const warnings: string[] = [];
