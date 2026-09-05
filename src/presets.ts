@@ -98,6 +98,7 @@ export const PRESETS: Preset[] = [
     description: 'Diamond modules with diamond eyes for a faceted look.',
     design: {
       dots: { type: 'diamond', color: '#4c1d95', scale: 0.95 },
+      alignment: { type: 'diamond', centerType: 'diamond' },
       cornersSquare: { type: 'diamond', color: '#4c1d95' },
       cornersDot: { type: 'diamond', color: '#7c3aed' },
       background: { color: '#faf5ff' },
@@ -121,6 +122,7 @@ export const PRESETS: Preset[] = [
     design: {
       encoding: { errorCorrectionLevel: 'H' },
       dots: { type: 'star', color: '#1e293b' },
+      alignment: { type: 'extra-rounded', centerType: 'dot' },
       cornersSquare: { type: 'extra-rounded', color: '#b45309' },
       cornersDot: { type: 'rounded', color: '#1e293b' },
       background: { color: '#fffbeb' },
