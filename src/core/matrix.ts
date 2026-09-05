@@ -33,6 +33,24 @@ export enum ModuleRegion {
   DarkModule = 7,
 }
 
+/**
+ * What it costs to overwrite modules after encoding. Anything drawn over the
+ * symbol — a logo, or a shape inked out of the modules themselves — turns those
+ * modules into read errors, which Reed-Solomon has to absorb.
+ */
+export interface ErrorBudget {
+  /**
+   * Stream position of the codeword each module belongs to, indexed
+   * `y * size + x`; -1 for function patterns, which carry no codeword.
+   */
+  codewordIndex: Int32Array;
+  /** Error correction block each codeword in the stream belongs to. */
+  codewordBlock: Uint16Array;
+  /** Codewords a single block can have wrong and still be recovered. */
+  correctablePerBlock: number;
+  blockCount: number;
+}
+
 export interface QrSymbol {
   version: number;
   ecc: EccLevel;
@@ -48,6 +66,8 @@ export interface QrSymbol {
   finders: { x: number; y: number; corner: 'top-left' | 'top-right' | 'bottom-left' }[];
   /** Centres of the alignment patterns actually drawn in this symbol. */
   alignments: { x: number; y: number }[];
+  /** How much of the symbol may be overwritten before it stops decoding. */
+  errorBudget: ErrorBudget;
 }
 
 export interface EncodeOptions {
@@ -80,8 +100,9 @@ export function encodeQr(data: string, options: EncodeOptions = {}): QrSymbol {
     throw new Error(`Mask must be an integer 0-7, received ${String(options.mask)}`);
   }
 
-  const { modules, regions, mask } = buildMatrix(version, ecc, codewords, requestedMask);
+  const { modules, regions, mask, codewordIndex } = buildMatrix(version, ecc, codewords, requestedMask);
   const size = moduleCount(version);
+  const layout = blockLayout(version, ecc);
 
   return {
     version,
@@ -97,6 +118,66 @@ export function encodeQr(data: string, options: EncodeOptions = {}): QrSymbol {
       { x: 0, y: size - 7, corner: 'bottom-left' },
     ],
     alignments: alignmentCentres(version),
+    errorBudget: {
+      codewordIndex,
+      codewordBlock: codewordBlockMap(version, ecc),
+      // Reed-Solomon recovers half as many wrong codewords as it has check
+      // codewords, because it must locate each error as well as correct it.
+      correctablePerBlock: Math.floor(layout.eccPerBlock / 2),
+      blockCount: layout.blockCount,
+    },
+  };
+}
+
+/**
+ * Which error correction block each codeword of the interleaved stream belongs
+ * to, mirroring the order `buildCodewords` writes them in.
+ */
+function codewordBlockMap(version: number, ecc: EccLevel): Uint16Array {
+  const layout = blockLayout(version, ecc);
+  const blocks: number[] = [];
+  const dataLength = (block: number): number =>
+    layout.shortBlockDataLength + (block < layout.shortBlockCount ? 0 : 1);
+
+  for (let i = 0; i <= layout.shortBlockDataLength; i++) {
+    for (let block = 0; block < layout.blockCount; block++) {
+      if (i < dataLength(block)) blocks.push(block);
+    }
+  }
+  for (let i = 0; i < layout.eccPerBlock; i++) {
+    for (let block = 0; block < layout.blockCount; block++) blocks.push(block);
+  }
+  return Uint16Array.from(blocks);
+}
+
+/**
+ * Cost of overwriting a set of modules: how many codewords each block loses,
+ * and whether the symbol can still be decoded afterwards.
+ */
+export function assessDamage(
+  symbol: QrSymbol,
+  overwritten: Iterable<{ x: number; y: number }>,
+): { damagedCodewords: number; worstBlockDamage: number; correctablePerBlock: number; withinBudget: boolean } {
+  const { codewordIndex, codewordBlock, correctablePerBlock, blockCount } = symbol.errorBudget;
+  const seen = new Set<number>();
+  const perBlock = new Array<number>(blockCount).fill(0);
+
+  for (const { x, y } of overwritten) {
+    if (x < 0 || y < 0 || x >= symbol.size || y >= symbol.size) continue;
+    const codeword = codewordIndex[y * symbol.size + x]!;
+    // -1 marks a function pattern, and padding bits past the last codeword.
+    if (codeword < 0 || seen.has(codeword)) continue;
+    seen.add(codeword);
+    const block = codewordBlock[codeword];
+    if (block !== undefined) perBlock[block]!++;
+  }
+
+  const worstBlockDamage = perBlock.reduce((worst, count) => Math.max(worst, count), 0);
+  return {
+    damagedCodewords: seen.size,
+    worstBlockDamage,
+    correctablePerBlock,
+    withinBudget: worstBlockDamage <= correctablePerBlock,
   };
 }
 
@@ -186,6 +267,7 @@ interface MatrixBuild {
   modules: boolean[][];
   regions: ModuleRegion[][];
   mask: number;
+  codewordIndex: Int32Array;
 }
 
 function buildMatrix(version: number, ecc: EccLevel, codewords: Uint8Array, forcedMask: number | null): MatrixBuild {
@@ -267,24 +349,28 @@ function buildMatrix(version: number, ecc: EccLevel, codewords: Uint8Array, forc
     }
   }
 
-  placeCodewords(modules, reserved, codewords, version, size);
+  const codewordIndex = placeCodewords(modules, reserved, codewords, version, size);
 
   const mask = forcedMask ?? chooseMask(modules, reserved, size, ecc);
   applyMask(modules, reserved, size, mask);
   drawFormatInformation(modules, size, ecc, mask);
 
-  return { modules, regions, mask };
+  return { modules, regions, mask, codewordIndex };
 }
 
-/** Walk the symbol in the standard two-column zigzag, writing data bits. */
+/**
+ * Walk the symbol in the standard two-column zigzag, writing data bits and
+ * recording which codeword each module carries.
+ */
 function placeCodewords(
   modules: boolean[][],
   reserved: boolean[][],
   codewords: Uint8Array,
   version: number,
   size: number,
-): void {
+): Int32Array {
   const totalBits = codewords.length * 8 + remainderBits(version);
+  const codewordIndex = new Int32Array(size * size).fill(-1);
   let bitIndex = 0;
 
   for (let right = size - 1; right >= 1; right -= 2) {
@@ -298,11 +384,13 @@ function placeCodewords(
         if (bitIndex < totalBits) {
           const byte = codewords[bitIndex >>> 3] ?? 0;
           modules[y]![x] = ((byte >>> (7 - (bitIndex & 7))) & 1) === 1;
+          if (bitIndex >>> 3 < codewords.length) codewordIndex[y * size + x] = bitIndex >>> 3;
         }
         bitIndex++;
       }
     }
   }
+  return codewordIndex;
 }
 
 export function maskCondition(mask: number, x: number, y: number): boolean {

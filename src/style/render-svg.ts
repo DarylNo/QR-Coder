@@ -1,4 +1,5 @@
-import { ModuleRegion, encodeQr, type QrSymbol } from '../core/matrix.js';
+import { ModuleRegion, assessDamage, encodeQr, type QrSymbol } from '../core/matrix.js';
+import { buildEmblem, type EmblemGeometry } from './emblem.js';
 import type {
   Gradient,
   QrDesign,
@@ -19,9 +20,6 @@ import {
   roundedRectPath,
   type Neighbors,
 } from './shapes.js';
-
-/** Share of the codewords each error correction level can afford to lose. */
-const ECC_RECOVERY: Record<string, number> = { L: 0.07, M: 0.15, Q: 0.25, H: 0.3 };
 
 interface Box {
   x: number;
@@ -138,7 +136,9 @@ export function renderSvg(design: QrDesign): RenderResult {
   };
 
   const hidden = logoMask(symbol, resolved);
-  const grid = buildDataGrid(symbol, resolved, hidden);
+  const emblem = resolved.emblem.enabled ? applyEmblem(symbol, resolved) : null;
+  const modules = emblem?.modules ?? symbol.modules;
+  const grid = buildDataGrid(symbol, modules, resolved, hidden, emblem?.geometry ?? null);
 
   const defs = new Defs(idPrefix(resolved));
   const body: string[] = [];
@@ -162,6 +162,21 @@ export function renderSvg(design: QrDesign): RenderResult {
     symbolParts.push(
       `<path ${fillAttributes(defs.paint(resolved.dots, symbolBox), resolved.dots.opacity)} d="${dataPath}"/>`,
     );
+  }
+
+  // The emblem's modules, drawn in their own colour on top of the data path.
+  if (emblem) {
+    const emblemGrid = buildEmblemGrid(symbol, modules, resolved, hidden, emblem.geometry);
+    const emblemDesign: ResolvedDesign =
+      resolved.emblem.dotType === 'inherit'
+        ? resolved
+        : { ...resolved, dots: { ...resolved.dots, type: resolved.emblem.dotType } };
+    const path = renderDataModules(emblemGrid, symbol.size, gridX, gridY, modulePixelSize, emblemDesign);
+    if (path) {
+      symbolParts.push(
+        `<path ${fillAttributes(defs.paint(resolved.emblem, symbolBox), resolved.emblem.opacity)} d="${path}"/>`,
+      );
+    }
   }
 
   // Alignment patterns, when styled as miniature eyes.
@@ -246,6 +261,10 @@ export function renderSvg(design: QrDesign): RenderResult {
     (resolved.pretty ? '\n' : '') +
     `</svg>`;
 
+  // Everything drawn over the modules — the logo's cleared area and any inked
+  // emblem — is a read error the error correction has to absorb.
+  const damage = assessDamage(symbol, [...hidden.modules, ...(emblem?.changed ?? [])]);
+
   const meta: RenderMeta = {
     version: symbol.version,
     errorCorrectionLevel: symbol.ecc,
@@ -256,7 +275,8 @@ export function renderSvg(design: QrDesign): RenderResult {
     width,
     height,
     logoCoverage: hidden.coverage,
-    warnings: collectWarnings(resolved, symbol, modulePixelSize, hidden.coverage),
+    errorBudget: damage,
+    warnings: collectWarnings(resolved, symbol, modulePixelSize, hidden, emblem, damage),
   };
 
   return { svg, meta };
@@ -269,39 +289,127 @@ function qrLabel(data: string): string {
 
 interface LogoMask {
   covers(x: number, y: number): boolean;
+  /** The modules the logo hides, which the error correction has to make up for. */
+  modules: { x: number; y: number }[];
   coverage: number;
 }
 
+const NO_LOGO: LogoMask = { covers: () => false, modules: [], coverage: 0 };
+
 /** Modules that fall underneath the logo, including its clear margin. */
 function logoMask(symbol: QrSymbol, design: ResolvedDesign): LogoMask {
-  if (!design.image.src || !design.image.hideBackgroundDots) {
-    return { covers: () => false, coverage: 0 };
-  }
+  if (!design.image.src || !design.image.hideBackgroundDots) return NO_LOGO;
+
   const half = (design.image.size * symbol.size) / 2 + design.image.margin;
   const centre = symbol.size / 2;
   const circular = design.image.shape === 'circle';
-  const coverage = Math.min(1, ((half * 2) ** 2 * (circular ? Math.PI / 4 : 1)) / symbol.size ** 2);
-  return {
-    coverage,
-    covers(x, y) {
-      const dx = x + 0.5 - centre;
-      const dy = y + 0.5 - centre;
-      return circular ? Math.hypot(dx, dy) <= half : Math.abs(dx) <= half && Math.abs(dy) <= half;
-    },
+  const covers = (x: number, y: number): boolean => {
+    const dx = x + 0.5 - centre;
+    const dy = y + 0.5 - centre;
+    return circular ? Math.hypot(dx, dy) <= half : Math.abs(dx) <= half && Math.abs(dy) <= half;
   };
+
+  const modules: { x: number; y: number }[] = [];
+  for (let y = 0; y < symbol.size; y++) {
+    for (let x = 0; x < symbol.size; x++) if (covers(x, y)) modules.push({ x, y });
+  }
+  return { covers, modules, coverage: modules.length / symbol.size ** 2 };
+}
+
+interface EmblemState {
+  geometry: EmblemGeometry;
+  /** The module values to draw, with an inked emblem already stamped in. */
+  modules: boolean[][];
+  /** Modules whose value the emblem changed. */
+  changed: { x: number; y: number }[];
+  /** Emblem modules that landed on a function pattern and had to be left alone. */
+  blocked: number;
+}
+
+/**
+ * Work out which modules form the emblem and, when it is inked, stamp the shape
+ * into a copy of the matrix. Function patterns are never overwritten: scanners
+ * locate the symbol with them, so a shape crossing one is clipped instead.
+ */
+function applyEmblem(symbol: QrSymbol, design: ResolvedDesign): EmblemState {
+  const geometry = buildEmblem(symbol.size, {
+    shape: design.emblem.shape,
+    size: design.emblem.size,
+    halo: design.emblem.halo,
+    ...(design.emblem.grid.length ? { grid: design.emblem.grid } : {}),
+  });
+
+  if (design.emblem.style === 'tint') {
+    return { geometry, modules: symbol.modules, changed: [], blocked: 0 };
+  }
+
+  const modules = symbol.modules.map((row) => [...row]);
+  const changed: { x: number; y: number }[] = [];
+  let blocked = 0;
+
+  for (let y = 0; y < symbol.size; y++) {
+    for (let x = 0; x < symbol.size; x++) {
+      const inShape = geometry.inside[y]![x]!;
+      const inHalo = geometry.halo[y]![x]!;
+      if (!inShape && !inHalo) continue;
+      if (symbol.regions[y]![x] !== ModuleRegion.Data) {
+        if (inShape) blocked++;
+        continue;
+      }
+      const wanted = inShape;
+      if (modules[y]![x] === wanted) continue;
+      modules[y]![x] = wanted;
+      changed.push({ x, y });
+    }
+  }
+
+  return { geometry, modules, changed, blocked };
+}
+
+/** Should this module be drawn by the regular dot renderer? */
+function isDrawableModule(
+  symbol: QrSymbol,
+  modules: boolean[][],
+  design: ResolvedDesign,
+  hidden: LogoMask,
+  x: number,
+  y: number,
+): boolean {
+  if (!modules[y]![x]) return false;
+  const region = symbol.regions[y]![x]!;
+  if (region === ModuleRegion.Finder || region === ModuleRegion.Separator) return false;
+  if (design.alignment.type !== 'as-data' && region === ModuleRegion.Alignment) return false;
+  return !hidden.covers(x, y);
 }
 
 /** Dark modules that the dot renderer is responsible for drawing. */
-function buildDataGrid(symbol: QrSymbol, design: ResolvedDesign, hidden: LogoMask): boolean[][] {
-  const styledAlignment = design.alignment.type !== 'as-data';
-  return symbol.modules.map((row, y) =>
-    row.map((dark, x) => {
-      if (!dark) return false;
-      const region = symbol.regions[y]![x]!;
-      if (region === ModuleRegion.Finder || region === ModuleRegion.Separator) return false;
-      if (styledAlignment && region === ModuleRegion.Alignment) return false;
-      return !hidden.covers(x, y);
-    }),
+function buildDataGrid(
+  symbol: QrSymbol,
+  modules: boolean[][],
+  design: ResolvedDesign,
+  hidden: LogoMask,
+  emblem: EmblemGeometry | null,
+): boolean[][] {
+  return modules.map((row, y) =>
+    row.map(
+      (_dark, x) =>
+        isDrawableModule(symbol, modules, design, hidden, x, y) && !(emblem?.inside[y]![x] ?? false),
+    ),
+  );
+}
+
+/** The emblem's own modules, drawn separately so they can carry their own fill. */
+function buildEmblemGrid(
+  symbol: QrSymbol,
+  modules: boolean[][],
+  design: ResolvedDesign,
+  hidden: LogoMask,
+  emblem: EmblemGeometry,
+): boolean[][] {
+  return modules.map((row, y) =>
+    row.map(
+      (_dark, x) => emblem.inside[y]![x]! && isDrawableModule(symbol, modules, design, hidden, x, y),
+    ),
   );
 }
 
@@ -478,15 +586,42 @@ function collectWarnings(
   design: ResolvedDesign,
   symbol: QrSymbol,
   modulePixelSize: number,
-  logoCoverage: number,
+  hidden: LogoMask,
+  emblem: EmblemState | null,
+  damage: ReturnType<typeof assessDamage>,
 ): string[] {
   const warnings: string[] = [];
-  const recovery = ECC_RECOVERY[symbol.ecc] ?? 0.15;
 
-  if (logoCoverage > recovery) {
+  if (!damage.withinBudget) {
+    const source =
+      hidden.modules.length && emblem?.changed.length
+        ? 'The logo and the emblem together overwrite'
+        : emblem?.changed.length
+          ? 'The emblem overwrites'
+          : 'The logo hides';
     warnings.push(
-      `The logo hides about ${Math.round(logoCoverage * 100)}% of the symbol but error correction level ` +
-        `${symbol.ecc} only recovers ${Math.round(recovery * 100)}%. Use a smaller logo or a higher level.`,
+      `${source} more of the symbol than it can recover: the worst-hit error correction block loses ` +
+        `${damage.worstBlockDamage} codewords but only ${damage.correctablePerBlock} can be repaired at ` +
+        `level ${symbol.ecc}. Make it smaller, or raise the error correction level.`,
+    );
+  } else if (damage.worstBlockDamage > damage.correctablePerBlock * 0.8) {
+    warnings.push(
+      `The symbol is close to its recovery limit: ${damage.worstBlockDamage} of ` +
+        `${damage.correctablePerBlock} repairable codewords are already used in the worst-hit block, ` +
+        'leaving little margin for print damage or a poor camera.',
+    );
+  }
+  if (emblem?.blocked) {
+    warnings.push(
+      `${emblem.blocked} of the emblem's modules fall on a finder, alignment or timing pattern and were ` +
+        'left untouched, so the shape is clipped. Move it or make it smaller.',
+    );
+  }
+  if (design.emblem.enabled && design.emblem.style === 'tint' && design.emblem.color === design.dots.color &&
+      !design.emblem.gradient && !design.dots.gradient) {
+    warnings.push(
+      'The emblem is tinted the same colour as the modules, so it will not be visible. ' +
+        'Give emblem.color a different colour, or use emblem.style "ink".',
     );
   }
   if (design.quietZone < 4) {

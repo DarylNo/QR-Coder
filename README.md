@@ -1,7 +1,7 @@
 # QR-Coder
 
 A QR code service with custom logos, custom dot shapes, and control over every
-design setting.
+design setting — including drawing your logo out of the code's own modules.
 
 Use it three ways: a **web playground** with live preview, an **HTTP API**, or a
 **Node library** (also usable in the browser). The QR encoder is written from
@@ -22,6 +22,7 @@ npm run serve          # http://localhost:3000
 | **Finder patterns** | 8 ring shapes, any module shape for the centres, separate colours and gradients, and per-corner overrides |
 | **Alignment patterns** | Drawn module by module or as a solid ring, with their own shape and colour |
 | **Logo** | Data URI or URL, size, clear margin, plate colour, square/rounded/circle clipping, opacity, and automatic removal of the modules underneath |
+| **Emblem** | A shape made *from the modules themselves* — circle, square, diamond, heart, or any traced image — either tinted into the pattern or inked as a solid silhouette |
 | **Background** | Colour or gradient, opacity, corner rounding, or fully transparent |
 | **Caption** | Text above or below the code, with font family, size, weight, letter spacing and colour |
 | **Canvas** | Width, height, padding, quiet zone, square or circular crop, rotation |
@@ -32,6 +33,71 @@ applied separately to the modules, the finder rings, the finder centres, the
 alignment patterns and the background.
 
 `GET /api/schema` returns this list as JSON, including ranges and defaults.
+
+## Logos made out of the code
+
+A logo does not have to sit on top of the code. An **emblem** is a shape formed
+from the modules themselves, in one of two styles:
+
+- **`tint`** recolours the modules that fall inside the shape. The encoded data
+  is untouched, so the symbol stays exactly as scannable as it was — this style
+  costs nothing.
+- **`ink`** forces those modules dark and clears a ring around them, so the shape
+  reads as a solid silhouette. This overwrites real codewords, which the error
+  correction has to absorb.
+
+```ts
+renderSvg({
+  data: 'https://example.com',
+  encoding: { errorCorrectionLevel: 'H' },
+  emblem: { shape: 'heart', size: 0.3, style: 'ink', color: '#db2777' },
+});
+```
+
+Any image can become one. `imageToGrid` samples it down to a module bitmap —
+using its transparency or its darkness, whichever carries the shape — and the
+result goes straight into `emblem.grid`:
+
+```ts
+import { imageToGrid, renderSvg } from 'qr-coder';
+
+const grid = await imageToGrid(logoDataUri, { modules: 11 });
+renderSvg({
+  data: 'https://example.com',
+  encoding: { errorCorrectionLevel: 'H' },
+  emblem: { shape: 'grid', grid, style: 'ink', color: '#1d4ed8' },
+});
+```
+
+It runs in the browser on a canvas and in Node through `@resvg/resvg-js`. The
+playground has it wired to a file picker: upload a logo and it is traced into
+the code in front of you.
+
+Grids can also be written by hand, which makes them easy to pass in a URL —
+rows separated by `|`:
+
+```
+/api/qr?data=hello&encoding.errorCorrectionLevel=H
+       &emblem.shape=grid&emblem.style=ink&emblem.grid=.%23%23.|%23%23%23%23|.%23%23.
+```
+
+### Knowing what it costs
+
+Anything drawn over the modules — an inked emblem, or the area a logo hides — is
+a read error the error correction has to repair. Every render reports exactly
+how much of that budget is spent:
+
+```ts
+const { meta } = renderSvg({ /* ... */ });
+meta.errorBudget;
+// { damagedCodewords: 25, worstBlockDamage: 7, correctablePerBlock: 8, withinBudget: true }
+```
+
+The figures are counted per error correction block from the real codeword
+layout, not estimated from the area covered, and the test suite checks that
+`withinBudget` agrees with whether the rendered image actually decodes. When it
+does not fit, you get a warning saying so — and raising the error correction
+level or shrinking the shape is what fixes it.
 
 ## HTTP API
 
@@ -139,7 +205,8 @@ goes to stdout.
 Decoration costs decoder margin. Every render reports `meta.warnings` (and the
 `X-QR-Warnings` header) when the design is likely to cause trouble:
 
-- a logo covering more of the symbol than the error correction level can recover
+- a logo or emblem overwriting more codewords than the error correction can repair
+- a symbol close enough to that limit to leave no margin for print damage
 - module scales that leave gaps a scanner reads as light modules
 - modules rendered smaller than 2px
 - colours whose contrast against the background falls below 4:1
@@ -172,14 +239,19 @@ client, `0` disables), `QR_CORS_ORIGIN`, `QR_PUBLIC_DIR`.
 - **Renderer**: each module shape, finder shape and preset is rasterized and
   decoded back at five output sizes, so a style that would not scan fails the
   build.
+- **Error budget**: inked emblems are grown past the recovery limit and the
+  reported budget is checked against whether the image still decodes, so the
+  number the service quotes is the number that matters.
 - **Service**: the API is exercised over real HTTP, including validation
   failures, rate limiting and path traversal attempts.
 
 ### Layout
 
 ```
-src/core/     QR encoding: Reed-Solomon, segmentation, matrix layout, masking
-src/style/    Design resolution, shape geometry, SVG rendering, contrast checks
+src/core/     QR encoding: Reed-Solomon, segmentation, matrix layout, masking,
+              and the per-module codeword map the error budget is measured with
+src/style/    Design resolution, shape geometry, SVG rendering, emblems,
+              image tracing, contrast checks
 src/api/      HTTP service, field schema, query parsing
 public/       The playground
 test/         Encoder, render and API tests

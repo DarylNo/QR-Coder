@@ -8,6 +8,7 @@ import { decodeSvg } from './helpers.js';
 // Tests run from a separate build directory, so the playground is pointed at
 // the repository copy rather than the one next to the compiled server.
 const PUBLIC_DIR = join(process.cwd(), 'public');
+const PAYLOAD = 'https://example.com/qr-coder';
 
 /** Start the service on an ephemeral port for the duration of `run`. */
 async function withServer(run: (base: string) => Promise<void>, options = {}): Promise<void> {
@@ -204,5 +205,40 @@ test('unsupported methods and unknown paths are handled', async () => {
     const preflight = await fetch(`${base}/api/qr`, { method: 'OPTIONS' });
     assert.equal(preflight.status, 204);
     assert.equal(preflight.headers.get('access-control-allow-origin'), '*');
+  });
+});
+
+test('an emblem can be described entirely in a query string', async () => {
+  await withServer(async (base) => {
+    const query = new URLSearchParams({
+      data: PAYLOAD,
+      width: '500',
+      'encoding.errorCorrectionLevel': 'H',
+      'emblem.shape': 'grid',
+      'emblem.grid': '.##.|####|####|.##.',
+      'emblem.style': 'ink',
+      'emblem.color': '#059669',
+    });
+    const response = await fetch(`${base}/api/qr?${query}`);
+    assert.equal(response.status, 200);
+    const svg = await response.text();
+    assert.ok(svg.includes('#059669'));
+    assert.equal(decodeSvg(svg, 700), PAYLOAD);
+  });
+});
+
+test('an emblem that overruns the error budget still renders, with a warning header', async () => {
+  await withServer(async (base) => {
+    const response = await fetch(
+      `${base}/api/qr?data=${encodeURIComponent(PAYLOAD)}&encoding.errorCorrectionLevel=L` +
+        '&emblem.shape=circle&emblem.size=0.5&emblem.style=ink',
+    );
+    assert.equal(response.status, 200);
+    const warnings = JSON.parse(response.headers.get('x-qr-warnings') ?? '[]') as string[];
+    assert.ok(
+      warnings.some((warning) => /more of the symbol than it can recover/i.test(warning)),
+      warnings.join(' | '),
+    );
+    await response.text();
   });
 });

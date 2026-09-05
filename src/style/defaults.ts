@@ -1,4 +1,5 @@
 import { ECC_LEVELS, MAX_VERSION, MIN_VERSION } from '../core/tables.js';
+import { EMBLEM_SHAPES, EMBLEM_STYLES, trimGrid } from './emblem.js';
 import {
   CORNER_SQUARE_TYPES,
   DOT_TYPES,
@@ -29,6 +30,7 @@ export const LIMITS = {
   maxDataLength: 4296,
   maxColorStops: 12,
   maxCaptionLength: 200,
+  maxEmblemGridRows: 200,
   maxImageBytes: 2 * 1024 * 1024,
 } as const;
 
@@ -85,6 +87,26 @@ function inferCornerDotType(dotType: DotType): CornerDotType {
     case 'random-dot': return 'dot';
     default: return dotType;
   }
+}
+
+/** Rows of a `grid` emblem, trimmed to the shape they actually contain. */
+function readGrid(value: unknown, shape: string): string[] {
+  if (value === undefined || value === null) {
+    if (shape === 'grid') throw new DesignError('emblem.grid is required when emblem.shape is "grid"');
+    return [];
+  }
+  // A newline-separated string keeps grids writable in a query string, where
+  // `|` is easier to type than an encoded line break.
+  const rows = typeof value === 'string' ? value.split(/\r?\n|\|/) : value;
+  if (!Array.isArray(rows) || rows.some((row) => typeof row !== 'string')) {
+    throw new DesignError('emblem.grid must be an array of strings, or a newline-separated string');
+  }
+  if (rows.length > LIMITS.maxEmblemGridRows) {
+    throw new DesignError(`emblem.grid accepts at most ${LIMITS.maxEmblemGridRows} rows`);
+  }
+  const trimmed = trimGrid(rows as string[]);
+  if (trimmed.length === 0) throw new DesignError('emblem.grid does not contain any filled cells');
+  return trimmed;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -264,6 +286,25 @@ export function resolveDesign(input: QrDesign): ResolvedDesign {
     ),
   };
 
+  const emblemRaw = readRecord(raw, 'emblem', 'emblem');
+  const emblemGiven = raw['emblem'] !== undefined && raw['emblem'] !== null;
+  const emblemShape = requireOneOf(emblemRaw['shape'] ?? 'circle', 'emblem.shape', EMBLEM_SHAPES);
+  const emblemGrid = readGrid(emblemRaw['grid'], emblemShape);
+  const emblemStyle = requireOneOf(emblemRaw['style'] ?? 'tint', 'emblem.style', EMBLEM_STYLES);
+  const emblem: ResolvedDesign['emblem'] = {
+    enabled: emblemGiven,
+    shape: emblemShape,
+    grid: emblemGrid,
+    size: emblemRaw['size'] === undefined ? 0.24 : requireNumber(emblemRaw['size'], 'emblem.size', 0.05, 1),
+    style: emblemStyle,
+    halo: emblemRaw['halo'] === undefined ? (emblemStyle === 'ink' ? 1 : 0) : requireNumber(emblemRaw['halo'], 'emblem.halo', 0, 6),
+    dotType:
+      emblemRaw['dotType'] === undefined
+        ? 'inherit'
+        : requireOneOf(emblemRaw['dotType'], 'emblem.dotType', DOT_TYPES),
+    ...resolveFill(emblemRaw, 'emblem', { color: dots.color, opacity: dots.opacity }),
+  };
+
   const captionRaw = readRecord(raw, 'caption', 'caption');
   const captionText = captionRaw['text'] === undefined ? '' : String(captionRaw['text']);
   if (captionText.length > LIMITS.maxCaptionLength) {
@@ -338,6 +379,7 @@ export function resolveDesign(input: QrDesign): ResolvedDesign {
     alignment,
     background,
     image,
+    emblem,
     caption,
     pretty: Boolean(raw['pretty']),
   };

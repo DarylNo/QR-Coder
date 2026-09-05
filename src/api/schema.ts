@@ -1,5 +1,6 @@
 import { ECC_LEVELS } from '../core/tables.js';
 import { CORNER_SQUARE_TYPES, DOT_TYPES } from '../style/types.js';
+import { EMBLEM_SHAPES, EMBLEM_STYLES } from '../style/emblem.js';
 import { LIMITS } from '../style/defaults.js';
 
 export type FieldType = 'string' | 'number' | 'integer' | 'boolean' | 'color' | 'enum';
@@ -78,6 +79,18 @@ export const FIELDS: FieldSchema[] = [
   { path: 'image.shape', type: 'enum', group: 'Logo', values: ['square', 'circle', 'rounded'], default: 'square', description: 'Shape of the logo clip and its plate.' },
   { path: 'image.round', type: 'number', group: 'Logo', min: 0, max: 1, default: 0.25, description: 'Corner rounding when the logo shape is `rounded`.' },
   { path: 'image.opacity', type: 'number', group: 'Logo', min: 0, max: 1, default: 1, description: 'Logo opacity.' },
+
+  { path: 'emblem.shape', type: 'enum', group: 'Emblem', values: EMBLEM_SHAPES, default: 'circle', description: 'Shape drawn out of the code\'s own modules. `grid` takes an explicit bitmap in emblem.grid.' },
+  { path: 'emblem.style', type: 'enum', group: 'Emblem', values: EMBLEM_STYLES, default: 'tint', description: '`tint` recolours the modules inside the shape and changes nothing else; `ink` forces them dark so the shape reads solid, at the cost of error correction.' },
+  { path: 'emblem.size', type: 'number', group: 'Emblem', min: 0.05, max: 1, default: 0.24, description: 'Width of a built-in shape as a fraction of the symbol width.' },
+  { path: 'emblem.grid', type: 'string', group: 'Emblem', description: 'Bitmap for a `grid` emblem: rows of `#` and `.`, separated by `|` or newlines.' },
+  { path: 'emblem.halo', type: 'number', group: 'Emblem', min: 0, max: 6, default: 1, description: 'Modules cleared around an inked shape so its outline reads. Ignored when tinting.' },
+  { path: 'emblem.color', type: 'color', group: 'Emblem', description: 'Emblem colour; defaults to the module colour.' },
+  { path: 'emblem.opacity', type: 'number', group: 'Emblem', min: 0, max: 1, default: 1, description: 'Emblem opacity.' },
+  { path: 'emblem.dotType', type: 'enum', group: 'Emblem', values: DOT_TYPES, description: 'Module shape used inside the emblem; defaults to the regular module shape.' },
+  { path: 'emblem.gradient.type', type: 'enum', group: 'Emblem', values: ['linear', 'radial'], description: 'Gradient across the emblem.' },
+  { path: 'emblem.gradient.rotation', type: 'number', group: 'Emblem', min: -360, max: 360, description: 'Angle of the emblem gradient.' },
+  { path: 'emblem.gradient.colorStops', type: 'string', group: 'Emblem', description: 'Emblem gradient stops.' },
 
   { path: 'caption.text', type: 'string', group: 'Caption', description: 'Text drawn above or below the symbol.' },
   { path: 'caption.position', type: 'enum', group: 'Caption', values: ['bottom', 'top'], default: 'bottom', description: 'Caption placement.' },
