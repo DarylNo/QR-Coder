@@ -302,3 +302,25 @@ test('running the server module directly starts it listening', async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('a border can be described in a query string', async () => {
+  await withServer(async (base) => {
+    const query = new URLSearchParams({
+      data: PAYLOAD,
+      width: '500',
+      'border.width': '10',
+      'border.style': 'dashed',
+      'border.color': '#059669',
+      'border.gap': '8',
+      'caption.text': 'SCAN ME',
+      'caption.background': '#059669',
+      'caption.color': '#ffffff',
+    });
+    const response = await fetch(`${base}/api/qr?${query}`);
+    assert.equal(response.status, 200);
+    const svg = await response.text();
+    assert.match(svg, /stroke-dasharray/);
+    assert.ok(svg.includes('SCAN ME'));
+    assert.equal(decodeSvg(svg, 700), PAYLOAD);
+  });
+});

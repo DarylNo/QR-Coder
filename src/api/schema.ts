@@ -1,5 +1,5 @@
 import { ECC_LEVELS } from '../core/tables.js';
-import { CORNER_SQUARE_TYPES, DOT_TYPES } from '../style/types.js';
+import { BORDER_STYLES, CORNER_SQUARE_TYPES, DOT_TYPES } from '../style/types.js';
 import { EMBLEM_SHAPES, EMBLEM_STYLES } from '../style/emblem.js';
 import { LIMITS } from '../style/defaults.js';
 
@@ -71,6 +71,17 @@ export const FIELDS: FieldSchema[] = [
   { path: 'background.gradient.rotation', type: 'number', group: 'Background', min: -360, max: 360, description: 'Angle of the background gradient.' },
   { path: 'background.gradient.colorStops', type: 'string', group: 'Background', description: 'Background gradient stops.' },
 
+  { path: 'border.width', type: 'number', group: 'Border', min: 0, max: LIMITS.maxBorderWidth, default: 0, description: 'Border thickness in pixels. Zero draws no border.' },
+  { path: 'border.color', type: 'color', group: 'Border', description: 'Border colour; defaults to the module colour.' },
+  { path: 'border.style', type: 'enum', group: 'Border', values: BORDER_STYLES, default: 'solid', description: 'Border line style.' },
+  { path: 'border.radius', type: 'number', group: 'Border', min: 0, max: 1, description: 'Corner rounding of the border; defaults to the background rounding. Use 1 on a square canvas for a circular frame.' },
+  { path: 'border.gap', type: 'number', group: 'Border', min: 0, max: LIMITS.maxMargin, default: 0, description: 'Space in pixels between the border and everything inside it.' },
+  { path: 'border.opacity', type: 'number', group: 'Border', min: 0, max: 1, default: 1, description: 'Border opacity.' },
+  { path: 'border.dash', type: 'number', group: 'Border', min: 0.5, max: 200, description: 'Dash length for the dashed and dotted styles; defaults to a multiple of the width.' },
+  { path: 'border.gradient.type', type: 'enum', group: 'Border', values: ['linear', 'radial'], description: 'Gradient along the border.' },
+  { path: 'border.gradient.rotation', type: 'number', group: 'Border', min: -360, max: 360, description: 'Angle of the border gradient.' },
+  { path: 'border.gradient.colorStops', type: 'string', group: 'Border', description: 'Border gradient stops.' },
+
   { path: 'image.src', type: 'string', group: 'Logo', description: 'Logo as a data:image/* URI or an http(s) URL.' },
   { path: 'image.size', type: 'number', group: 'Logo', min: 0.05, max: 0.5, default: 0.25, description: 'Logo width as a fraction of the symbol width.' },
   { path: 'image.margin', type: 'number', group: 'Logo', min: 0, max: 10, default: 1, description: 'Clear space kept around the logo, in modules.' },
@@ -95,6 +106,7 @@ export const FIELDS: FieldSchema[] = [
   { path: 'caption.text', type: 'string', group: 'Caption', description: 'Text drawn above or below the symbol.' },
   { path: 'caption.position', type: 'enum', group: 'Caption', values: ['bottom', 'top'], default: 'bottom', description: 'Caption placement.' },
   { path: 'caption.color', type: 'color', group: 'Caption', description: 'Caption colour; defaults to the module colour.' },
+  { path: 'caption.background', type: 'color', group: 'Caption', default: 'none', description: 'Band painted behind the caption, filling the width inside the border.' },
   { path: 'caption.fontFamily', type: 'string', group: 'Caption', description: 'CSS font stack for the caption.' },
   { path: 'caption.fontSize', type: 'number', group: 'Caption', min: 4, max: 400, description: 'Caption font size in pixels.' },
   { path: 'caption.fontWeight', type: 'enum', group: 'Caption', values: ['100', '200', '300', '400', '500', '600', '700', '800', '900', 'normal', 'bold'], default: '600', description: 'Caption font weight.' },

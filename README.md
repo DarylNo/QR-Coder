@@ -24,7 +24,8 @@ npm run serve          # http://localhost:3000
 | **Logo** | Data URI or URL, size, clear margin, plate colour, square/rounded/circle clipping, opacity, and automatic removal of the modules underneath |
 | **Emblem** | A shape made *from the modules themselves* — circle, square, diamond, heart, or any traced image — either tinted into the pattern or inked as a solid silhouette |
 | **Background** | Colour or gradient, opacity, corner rounding, or fully transparent |
-| **Caption** | Text above or below the code, with font family, size, weight, letter spacing and colour |
+| **Border** | A frame around the whole image: thickness, colour or gradient, solid/dashed/dotted/double, corner rounding, and the gap it keeps from the code |
+| **Caption** | Text above or below the code, with font family, size, weight, letter spacing and colour, optionally on a filled band |
 | **Canvas** | Width, height, padding, quiet zone, square or circular crop, rotation |
 | **Encoding** | Error correction level, symbol version, mask pattern, encoding mode, UTF-8 ECI |
 
@@ -98,6 +99,41 @@ layout, not estimated from the area covered, and the test suite checks that
 `withinBudget` agrees with whether the rendered image actually decodes. When it
 does not fit, you get a warning saying so — and raising the error correction
 level or shrinking the shape is what fixes it.
+
+## Borders and frames
+
+`border` draws a frame around the whole image. It takes its thickness from
+`width` — zero, the default, draws nothing — and everything inside it, the
+margin, the code and the caption, moves in to make room, so the canvas stays
+the size you asked for.
+
+```ts
+renderSvg({
+  data: 'https://example.com',
+  border: { width: 10, color: '#1d4ed8', style: 'solid', radius: 0.1, gap: 8 },
+  background: { color: '#ffffff', round: 0.1 },
+});
+```
+
+`style` is `solid`, `dashed`, `dotted` or `double`. `radius` defaults to the
+background's rounding so the plate and its frame stay concentric; set it to `1`
+on a square canvas for a circular frame. `gap` is the space the border keeps
+between itself and the code, and the border takes a `gradient` like every other
+element.
+
+Pairing a border with a caption band gives the familiar call-to-action frame —
+`caption.background` fills the width inside the border:
+
+```ts
+renderSvg({
+  data: 'https://example.com',
+  border: { width: 8, color: '#1d4ed8', radius: 0.1, gap: 8 },
+  background: { color: '#ffffff', round: 0.1 },
+  caption: { text: 'SCAN ME', color: '#ffffff', background: '#1d4ed8', letterSpacing: 2 },
+});
+```
+
+The `framed` and `ticket` presets are both built this way.
 
 ## HTTP API
 
@@ -251,7 +287,7 @@ client, `0` disables), `QR_CORS_ORIGIN`, `QR_PUBLIC_DIR`.
 src/core/     QR encoding: Reed-Solomon, segmentation, matrix layout, masking,
               and the per-module codeword map the error budget is measured with
 src/style/    Design resolution, shape geometry, SVG rendering, emblems,
-              image tracing, contrast checks
+              borders, image tracing, contrast checks
 src/api/      HTTP service, field schema, query parsing
 public/       The playground
 test/         Encoder, render and API tests

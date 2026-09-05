@@ -91,6 +91,22 @@ export interface AlignmentOptions extends Fill {
   centerType?: CornerDotType;
 }
 
+export const BORDER_STYLES = ['solid', 'dashed', 'dotted', 'double'] as const;
+export type BorderStyle = (typeof BORDER_STYLES)[number];
+
+/** A frame drawn around the whole image, inside the canvas bounds. */
+export interface BorderOptions extends Fill {
+  /** Thickness in pixels. Zero, the default, draws no border. */
+  width?: number;
+  style?: BorderStyle;
+  /** Corner rounding, 0 (square) to 1 (fully round); defaults to the background's. */
+  radius?: number;
+  /** Space in pixels between the border and everything inside it. */
+  gap?: number;
+  /** Dash length for the `dashed` and `dotted` styles; defaults to the width. */
+  dash?: number;
+}
+
 export interface BackgroundOptions extends Fill {
   /** Corner rounding of the background plate, 0 (square) to 1 (fully round). */
   round?: number;
@@ -141,6 +157,8 @@ export interface CaptionOptions {
   text?: string;
   position?: 'bottom' | 'top';
   color?: string;
+  /** Band painted behind the caption, filling the width inside the border. */
+  background?: string;
   fontFamily?: string;
   fontSize?: number;
   fontWeight?: string | number;
@@ -178,6 +196,7 @@ export interface QrDesign {
   cornersDot?: CornerDotOptions;
   alignment?: AlignmentOptions;
   background?: BackgroundOptions;
+  border?: BorderOptions;
   image?: ImageOptions;
   emblem?: EmblemOptions;
   caption?: CaptionOptions;
@@ -215,6 +234,14 @@ export interface ResolvedBackground extends ResolvedFill {
   round: number;
 }
 
+export interface ResolvedBorder extends ResolvedFill {
+  width: number;
+  style: BorderStyle;
+  radius: number;
+  gap: number;
+  dash: number;
+}
+
 export interface ResolvedImage {
   src?: string;
   size: number;
@@ -242,6 +269,7 @@ export interface ResolvedCaption {
   text: string;
   position: 'bottom' | 'top';
   color: string;
+  background: string;
   fontFamily: string;
   fontSize: number;
   fontWeight: string | number;
@@ -272,6 +300,7 @@ export interface ResolvedDesign {
   cornersDot: ResolvedCornerDot & { corners: Partial<Record<FinderCorner, ResolvedCornerDot>> };
   alignment: ResolvedAlignment;
   background: ResolvedBackground;
+  border: ResolvedBorder;
   image: ResolvedImage;
   emblem: ResolvedEmblem;
   caption: ResolvedCaption;
