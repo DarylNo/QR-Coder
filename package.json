@@ -1,0 +1,52 @@
+{
+  "name": "qr-coder",
+  "version": "0.1.0",
+  "description": "Customizable QR code generation service: logos, custom dot shapes, gradients, and full control over every design setting.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "public",
+    "README.md"
+  ],
+  "bin": {
+    "qr-coder": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/api/server.js",
+    "dev": "tsc -p tsconfig.json --watch",
+    "serve": "npm run build && node dist/api/server.js",
+    "test": "tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "keywords": [
+    "qr",
+    "qrcode",
+    "qr-code",
+    "svg",
+    "generator",
+    "logo",
+    "styling"
+  ],
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "jsqr": "^1.4.0",
+    "qrcode": "^1.5.4",
+    "typescript": "^5.7.2"
+  },
+  "optionalDependencies": {
+    "@resvg/resvg-js": "^2.6.2"
+  }
+}
