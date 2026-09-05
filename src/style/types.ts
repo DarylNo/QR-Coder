@@ -1,7 +1,8 @@
 import type { EccLevel } from '../core/tables.js';
 import type { EncodingMode } from '../core/segments.js';
+import type { EmblemShape, EmblemStyle } from './emblem.js';
 
-export type { EccLevel, EncodingMode };
+export type { EccLevel, EncodingMode, EmblemShape, EmblemStyle };
 
 /** A stop in a gradient, positioned between 0 and 1. */
 export interface ColorStop {
@@ -116,6 +117,26 @@ export interface ImageOptions {
   preserveAspectRatio?: string;
 }
 
+/**
+ * A shape formed from the code's own modules, instead of an image laid over
+ * them. See `style/emblem.ts` for how the two styles differ.
+ */
+export interface EmblemOptions extends Fill {
+  shape?: EmblemShape;
+  /**
+   * Rows of characters for a `grid` emblem; `#`, `1`, `X` and `*` mark a module.
+   * A single string is split on newlines or `|`, so grids survive a query string.
+   */
+  grid?: string[] | string;
+  /** Width of a built-in shape as a fraction of the symbol width. */
+  size?: number;
+  style?: EmblemStyle;
+  /** Modules cleared around an inked shape so its outline reads; ignored when tinting. */
+  halo?: number;
+  /** Module shape used inside the emblem; defaults to the regular module shape. */
+  dotType?: DotType;
+}
+
 export interface CaptionOptions {
   text?: string;
   position?: 'bottom' | 'top';
@@ -158,6 +179,7 @@ export interface QrDesign {
   alignment?: AlignmentOptions;
   background?: BackgroundOptions;
   image?: ImageOptions;
+  emblem?: EmblemOptions;
   caption?: CaptionOptions;
   /** Pretty-print the SVG output. */
   pretty?: boolean;
@@ -205,6 +227,17 @@ export interface ResolvedImage {
   preserveAspectRatio: string;
 }
 
+export interface ResolvedEmblem extends ResolvedFill {
+  enabled: boolean;
+  shape: EmblemShape;
+  grid: string[];
+  size: number;
+  style: EmblemStyle;
+  halo: number;
+  /** `inherit` uses the regular module shape. */
+  dotType: DotType | 'inherit';
+}
+
 export interface ResolvedCaption {
   text: string;
   position: 'bottom' | 'top';
@@ -240,6 +273,7 @@ export interface ResolvedDesign {
   alignment: ResolvedAlignment;
   background: ResolvedBackground;
   image: ResolvedImage;
+  emblem: ResolvedEmblem;
   caption: ResolvedCaption;
   pretty: boolean;
 }
@@ -257,6 +291,16 @@ export interface RenderMeta {
   height: number;
   /** Fraction of the symbol's modules hidden behind the logo. */
   logoCoverage: number;
+  /**
+   * What overwriting modules — for a logo, or an inked emblem — costs against
+   * the symbol's error correction.
+   */
+  errorBudget: {
+    damagedCodewords: number;
+    worstBlockDamage: number;
+    correctablePerBlock: number;
+    withinBudget: boolean;
+  };
   /** Non-fatal advice about scannability. */
   warnings: string[];
 }

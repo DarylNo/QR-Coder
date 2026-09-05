@@ -129,6 +129,31 @@ export const PRESETS: Preset[] = [
     },
   },
   {
+    id: 'heartmark',
+    name: 'Heart Mark',
+    description: 'A heart inked out of the code\'s own modules, at high error correction.',
+    design: {
+      encoding: { errorCorrectionLevel: 'H' },
+      dots: { type: 'rounded', color: '#334155' },
+      cornersSquare: { type: 'extra-rounded', color: '#334155' },
+      cornersDot: { type: 'dot', color: '#db2777' },
+      emblem: { shape: 'heart', size: 0.3, style: 'ink', color: '#db2777', dotType: 'dot' },
+      background: { color: '#fff1f2' },
+    },
+  },
+  {
+    id: 'tinted-core',
+    name: 'Tinted Core',
+    description: 'A diamond picked out in colour without touching the data — no error correction spent.',
+    design: {
+      dots: { type: 'rounded', color: '#475569' },
+      cornersSquare: { type: 'rounded', color: '#0f172a' },
+      cornersDot: { type: 'rounded', color: '#0f172a' },
+      emblem: { shape: 'diamond', size: 0.42, style: 'tint', color: '#be123c' },
+      background: { color: '#ffffff' },
+    },
+  },
+  {
     id: 'badge',
     name: 'Scan Me Badge',
     description: 'Circular crop, rounded plate and a caption underneath.',

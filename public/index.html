@@ -226,6 +226,67 @@
         </details>
 
         <details class="group">
+          <summary>Emblem</summary>
+          <p class="hint">
+            Draw a shape out of the code's own modules. Tinting recolours the modules inside the
+            shape and changes nothing else; inking forces them dark so the shape reads solid, which
+            spends error correction.
+          </p>
+          <div class="grid">
+            <label class="field checkbox wide">
+              <input type="checkbox" id="emblem-on" />
+              <span>Show an emblem</span>
+            </label>
+            <label class="field">
+              <span>Shape</span>
+              <select data-path="emblem.shape" data-kind="string">
+                <option value="circle">circle</option>
+                <option value="square">square</option>
+                <option value="diamond">diamond</option>
+                <option value="heart">heart</option>
+                <option value="grid">traced image</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Style</span>
+              <select data-path="emblem.style" data-kind="string">
+                <option value="tint">tint</option>
+                <option value="ink">ink</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Size <output data-output="emblem.size">0.24</output></span>
+              <input type="range" min="0.05" max="0.6" step="0.01" value="0.24" data-path="emblem.size" data-kind="number" />
+            </label>
+            <label class="field">
+              <span>Colour</span>
+              <input type="color" data-path="emblem.color" data-kind="color" value="#dc2626" />
+            </label>
+            <label class="field">
+              <span>Clear ring <output data-output="emblem.halo">1</output></span>
+              <input type="range" min="0" max="4" step="0.5" value="1" data-path="emblem.halo" data-kind="number" />
+            </label>
+            <label class="field">
+              <span>Module shape</span>
+              <select data-path="emblem.dotType" data-kind="string"></select>
+            </label>
+            <label class="field wide">
+              <span>Trace an image into modules</span>
+              <input type="file" id="emblem-file" accept="image/png,image/jpeg,image/svg+xml,image/webp,image/gif" />
+            </label>
+            <label class="field">
+              <span>Detail <output id="emblem-detail-out">11</output></span>
+              <input type="range" min="7" max="33" step="2" value="11" id="emblem-detail" />
+            </label>
+            <label class="field checkbox">
+              <input type="checkbox" id="emblem-invert" />
+              <span>Invert traced image</span>
+            </label>
+          </div>
+          <pre id="emblem-preview" class="grid-preview" hidden></pre>
+        </details>
+
+        <details class="group">
           <summary>Caption</summary>
           <div class="grid">
             <label class="field wide">

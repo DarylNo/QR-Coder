@@ -1,5 +1,6 @@
 import { renderSvg } from '/lib/style/render-svg.js';
 import { resolveDesign } from '/lib/style/defaults.js';
+import { imageToGrid } from '/lib/style/image-grid.js';
 import { CORNER_SQUARE_TYPES, DOT_TYPES } from '/lib/style/types.js';
 import { PRESETS } from '/lib/presets.js';
 
@@ -21,6 +22,9 @@ const gradientStops = {
   background: [{ offset: 0, color: '#ffffff' }, { offset: 1, color: '#e2e8f0' }],
 };
 let logoSrc = '';
+/** Source image and traced module grid for a `grid` emblem. */
+let emblemSource = '';
+let emblemGrid = [];
 let lastRender = null;
 
 /* ------------------------------------------------------------------ setup */
@@ -36,6 +40,7 @@ fillSelect(document.querySelector('[data-path="cornersSquare.type"]'), CORNER_SQ
 fillSelect(document.querySelector('[data-path="cornersDot.type"]'), DOT_TYPES, { autoLabel: 'match modules' });
 fillSelect(document.querySelector('[data-path="alignment.type"]'), ['as-data', ...CORNER_SQUARE_TYPES], { autoLabel: 'auto' });
 fillSelect(document.querySelector('[data-path="alignment.centerType"]'), DOT_TYPES, { autoLabel: 'auto' });
+fillSelect(document.querySelector('[data-path="emblem.dotType"]'), DOT_TYPES, { autoLabel: 'match modules' });
 fillSelect(
   document.querySelector('[data-path="encoding.version"]'),
   Array.from({ length: 40 }, (_, index) => index + 1),
@@ -120,6 +125,15 @@ function collectDesign() {
     delete design.image;
   }
 
+  if (document.getElementById('emblem-on').checked) {
+    if (design.emblem?.shape === 'grid') {
+      if (emblemGrid.length) design.emblem.grid = emblemGrid;
+      else delete design.emblem.shape; // Fall back to the default shape until an image is traced.
+    }
+  } else {
+    delete design.emblem;
+  }
+
   if (!design.caption?.text) delete design.caption;
 
   if (document.getElementById('per-corner-toggle').checked) {
@@ -184,6 +198,7 @@ function showMeta(meta) {
     ['Modules', `${meta.moduleCount}×${meta.moduleCount}`],
     ['Mode', meta.mode],
     ['Module px', meta.modulePixelSize.toFixed(1)],
+    ['Repair used', `${meta.errorBudget.worstBlockDamage}/${meta.errorBudget.correctablePerBlock}`],
   ];
   metaList.replaceChildren(
     ...entries.map(([label, value]) => {
@@ -362,6 +377,7 @@ function resetForm() {
   }
   document.getElementById('per-corner-toggle').checked = false;
   document.getElementById('per-corner-body').hidden = true;
+  document.getElementById('emblem-on').checked = false;
 }
 
 /** Load a preset's values into the controls so they stay editable. */
@@ -382,6 +398,7 @@ function applyPreset(design) {
         walk(value, path);
         continue;
       }
+      if (prefix === 'emblem') document.getElementById('emblem-on').checked = true;
       const input = document.querySelector(`[data-path="${path}"]`);
       if (!input) continue;
       if (input.type === 'checkbox') input.checked = Boolean(value);
@@ -435,6 +452,8 @@ function flattenForQuery(design, prefix = '', params = new URLSearchParams()) {
     const path = prefix ? `${prefix}.${key}` : key;
     if (key === 'colorStops' && Array.isArray(value)) {
       params.set(path, value.map((stop) => `${stop.offset}:${stop.color}`).join(','));
+    } else if (key === 'grid' && Array.isArray(value)) {
+      params.set(path, value.join('|'));
     } else if (value && typeof value === 'object' && !Array.isArray(value)) {
       flattenForQuery(value, path, params);
     } else if (value !== undefined) {
@@ -490,6 +509,65 @@ perCornerToggle.addEventListener('change', () => {
   document.getElementById('per-corner-body').hidden = !perCornerToggle.checked;
   scheduleRender();
 });
+
+const emblemToggle = document.getElementById('emblem-on');
+emblemToggle.addEventListener('change', () => {
+  // Without an explicit colour the emblem inherits the module colour, which
+  // would make a tinted one invisible; start from the swatch's own value.
+  if (emblemToggle.checked) touched.add('emblem.color');
+  scheduleRender();
+});
+
+async function traceEmblem() {
+  if (!emblemSource) return;
+  const detail = Number(document.getElementById('emblem-detail').value);
+  try {
+    emblemGrid = await imageToGrid(emblemSource, {
+      modules: detail,
+      invert: document.getElementById('emblem-invert').checked,
+    });
+  } catch (error) {
+    emblemGrid = [];
+    notify(error instanceof Error ? error.message : 'The image could not be traced.');
+  }
+  const preview = document.getElementById('emblem-preview');
+  preview.hidden = emblemGrid.length === 0;
+  preview.textContent = emblemGrid.join('\n');
+  scheduleRender();
+}
+
+document.getElementById('emblem-file').addEventListener('change', (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    emblemSource = String(reader.result);
+    emblemToggle.checked = true;
+    touched.add('emblem.color');
+    document.querySelector('[data-path="emblem.shape"]').value = 'grid';
+    document.querySelector('[data-path="emblem.style"]').value = 'ink';
+    touched.add('emblem.shape');
+    touched.add('emblem.style');
+
+    // An inked shape spends error correction, and the default level rarely has
+    // enough to spare. Raise it once, visibly, rather than rendering something
+    // that cannot be scanned.
+    const level = document.querySelector('[data-path="encoding.errorCorrectionLevel"]');
+    if (level.value === 'L' || level.value === 'M') {
+      level.value = 'H';
+      touched.add('encoding.errorCorrectionLevel');
+      notify('Raised error correction to H so the traced shape still scans.');
+    }
+    await traceEmblem();
+  };
+  reader.readAsDataURL(file);
+});
+
+document.getElementById('emblem-detail').addEventListener('input', (event) => {
+  document.getElementById('emblem-detail-out').textContent = event.target.value;
+  traceEmblem();
+});
+document.getElementById('emblem-invert').addEventListener('change', traceEmblem);
 
 document.getElementById('logo-file').addEventListener('change', (event) => {
   const file = event.target.files?.[0];
@@ -576,6 +654,10 @@ document.getElementById('copy-url').addEventListener('click', () => {
 document.getElementById('reset').addEventListener('click', () => {
   resetForm();
   logoSrc = '';
+  emblemSource = '';
+  emblemGrid = [];
+  document.getElementById('emblem-file').value = '';
+  document.getElementById('emblem-preview').hidden = true;
   document.getElementById('logo-file').value = '';
   document.getElementById('logo-url').value = '';
   for (const button of document.querySelectorAll('.presets button')) button.setAttribute('aria-pressed', 'false');
