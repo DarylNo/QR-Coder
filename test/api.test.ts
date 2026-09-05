@@ -2,7 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
-import { createServer } from '../src/api/server.js';
+import { spawn } from 'node:child_process';
+import { cp, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { pathToFileURL } from 'node:url';
+import { createServer, isEntryPoint } from '../src/api/server.js';
 import { decodeSvg } from './helpers.js';
 
 // Tests run from a separate build directory, so the playground is pointed at
@@ -241,4 +245,60 @@ test('an emblem that overruns the error budget still renders, with a warning hea
     );
     await response.text();
   });
+});
+
+test('the entry-point guard recognises the path Node was given', () => {
+  const posix = '/home/daryl/QR-Coder/dist/api/server.js';
+  assert.equal(isEntryPoint(pathToFileURL(posix).href, posix), true);
+  assert.equal(isEntryPoint(pathToFileURL(posix).href, '/somewhere/else/server.js'), false);
+  assert.equal(isEntryPoint(pathToFileURL(posix).href, undefined), false);
+
+  // Paths needing percent-encoding are where naive `file://` concatenation
+  // first goes wrong, on every platform.
+  const spaced = '/home/daryl/My Projects/QR-Coder/dist/api/server.js';
+  assert.equal(isEntryPoint(pathToFileURL(spaced).href, spaced), true);
+  assert.notEqual(pathToFileURL(spaced).href, `file://${spaced}`);
+});
+
+test('running the server module directly starts it listening', async () => {
+  // `npm start` runs the module as the entry point, which is a different code
+  // path from createServer() and the one that silently did nothing before.
+  //
+  // The copy into a directory whose name contains a space is the point of the
+  // test: that is where building the entry URL by concatenation stops matching
+  // `import.meta.url`, on every platform rather than only on Windows.
+  const root = await mkdtemp(join(tmpdir(), 'qr coder '));
+  await cp(join(process.cwd(), 'dist-test', 'src'), join(root, 'src'), { recursive: true });
+  const entry = join(root, 'src', 'api', 'server.js');
+  const port = 3100 + Math.floor(Math.random() * 400);
+  const child = spawn(process.execPath, [entry], {
+    env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', QR_PUBLIC_DIR: PUBLIC_DIR },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  try {
+    const started = await Promise.race([
+      new Promise<string>((resolve) => {
+        let output = '';
+        child.stdout.on('data', (chunk: Buffer) => {
+          output += chunk.toString();
+          if (output.includes('listening')) resolve(output);
+        });
+      }),
+      new Promise<never>((_resolve, reject) =>
+        setTimeout(() => reject(new Error('the server never reported that it was listening')), 10_000),
+      ),
+      new Promise<never>((_resolve, reject) =>
+        child.on('exit', (code) => reject(new Error(`the server exited with code ${code} instead of listening`))),
+      ),
+    ]);
+    assert.match(started, /listening on http/);
+
+    const response = await fetch(`http://127.0.0.1:${port}/health`);
+    assert.equal(response.status, 200);
+    assert.equal(((await response.json()) as { status: string }).status, 'ok');
+  } finally {
+    child.kill();
+    await rm(root, { recursive: true, force: true });
+  }
 });

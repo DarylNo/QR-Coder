@@ -1,7 +1,7 @@
 import { createServer as createHttpServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { renderSvg } from '../style/render-svg.js';
 import { renderPng } from '../style/raster.js';
 import { DesignError } from '../style/sanitize.js';
@@ -283,8 +283,23 @@ function sendError(response: ServerResponse, config: Required<ServerOptions>, st
   sendJson(response, config, status, { error: message });
 }
 
+/**
+ * True when this module is the file Node was asked to run.
+ *
+ * `process.argv[1]` is a native filesystem path, so it has to be converted with
+ * `pathToFileURL` rather than concatenated onto `file://`: concatenation leaves
+ * out the percent-encoding `import.meta.url` carries (any path containing a
+ * space stops matching) and mangles Windows paths completely, turning
+ * `C:\dir\server.js` into `file://C:\dir\server.js` instead of
+ * `file:///C:/dir/server.js`. Either way the comparison silently fails and the
+ * server never starts.
+ */
+export function isEntryPoint(moduleUrl: string, entryPath: string | undefined): boolean {
+  return entryPath !== undefined && moduleUrl === pathToFileURL(entryPath).href;
+}
+
 /** Start the service when this module is executed directly. */
-if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
+if (isEntryPoint(import.meta.url, process.argv[1])) {
   const port = Number(process.env['PORT'] ?? 3000);
   const host = process.env['HOST'] ?? '0.0.0.0';
   createServer({
