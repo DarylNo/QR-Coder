@@ -154,6 +154,30 @@ export const PRESETS: Preset[] = [
     },
   },
   {
+    id: 'framed',
+    name: 'Framed',
+    description: 'A rounded frame around the code, with a call-to-action band along the bottom.',
+    design: {
+      border: { width: 8, color: '#1d4ed8', radius: 0.1, gap: 8 },
+      background: { color: '#ffffff', round: 0.1 },
+      dots: { type: 'rounded', color: '#0f172a' },
+      cornersSquare: { type: 'extra-rounded', color: '#1d4ed8' },
+      cornersDot: { type: 'rounded', color: '#1d4ed8' },
+      caption: { text: 'SCAN ME', color: '#ffffff', background: '#1d4ed8', letterSpacing: 2, gap: 10 },
+    },
+  },
+  {
+    id: 'ticket',
+    name: 'Ticket',
+    description: 'A dashed cut-here frame, the way a voucher or coupon is printed.',
+    design: {
+      border: { width: 5, color: '#334155', style: 'dashed', gap: 14 },
+      background: { color: '#fffbeb' },
+      dots: { type: 'square', color: '#334155' },
+      cornersSquare: { type: 'square', color: '#334155' },
+    },
+  },
+  {
     id: 'badge',
     name: 'Scan Me Badge',
     description: 'Circular crop, rounded plate and a caption underneath.',

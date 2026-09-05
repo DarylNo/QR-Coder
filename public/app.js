@@ -134,6 +134,9 @@ function collectDesign() {
     delete design.emblem;
   }
 
+  if (design.caption?.text && document.getElementById('caption-band-on').checked) {
+    design.caption.background = document.getElementById('caption-band').value;
+  }
   if (!design.caption?.text) delete design.caption;
 
   if (document.getElementById('per-corner-toggle').checked) {
@@ -378,6 +381,7 @@ function resetForm() {
   document.getElementById('per-corner-toggle').checked = false;
   document.getElementById('per-corner-body').hidden = true;
   document.getElementById('emblem-on').checked = false;
+  document.getElementById('caption-band-on').checked = false;
 }
 
 /** Load a preset's values into the controls so they stay editable. */
@@ -399,6 +403,11 @@ function applyPreset(design) {
         continue;
       }
       if (prefix === 'emblem') document.getElementById('emblem-on').checked = true;
+      if (path === 'caption.background') {
+        document.getElementById('caption-band-on').checked = true;
+        document.getElementById('caption-band').value = String(value);
+        continue;
+      }
       const input = document.querySelector(`[data-path="${path}"]`);
       if (!input) continue;
       if (input.type === 'checkbox') input.checked = Boolean(value);

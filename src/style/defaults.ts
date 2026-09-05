@@ -1,6 +1,7 @@
 import { ECC_LEVELS, MAX_VERSION, MIN_VERSION } from '../core/tables.js';
 import { EMBLEM_SHAPES, EMBLEM_STYLES, trimGrid } from './emblem.js';
 import {
+  BORDER_STYLES,
   CORNER_SQUARE_TYPES,
   DOT_TYPES,
   type CornerDotType,
@@ -31,6 +32,7 @@ export const LIMITS = {
   maxColorStops: 12,
   maxCaptionLength: 200,
   maxEmblemGridRows: 200,
+  maxBorderWidth: 200,
   maxImageBytes: 2 * 1024 * 1024,
 } as const;
 
@@ -262,6 +264,20 @@ export function resolveDesign(input: QrDesign): ResolvedDesign {
     round: backgroundRaw['round'] === undefined ? 0 : requireNumber(backgroundRaw['round'], 'background.round', 0, 1),
   };
 
+  const borderRaw = readRecord(raw, 'border', 'border');
+  const borderWidth =
+    borderRaw['width'] === undefined ? 0 : requireNumber(borderRaw['width'], 'border.width', 0, LIMITS.maxBorderWidth);
+  const border: ResolvedDesign['border'] = {
+    width: borderWidth,
+    style: requireOneOf(borderRaw['style'] ?? 'solid', 'border.style', BORDER_STYLES),
+    // Matching the background keeps the plate and its frame concentric unless
+    // the caller deliberately separates them.
+    radius: borderRaw['radius'] === undefined ? background.round : requireNumber(borderRaw['radius'], 'border.radius', 0, 1),
+    gap: borderRaw['gap'] === undefined ? 0 : requireNumber(borderRaw['gap'], 'border.gap', 0, LIMITS.maxMargin),
+    dash: borderRaw['dash'] === undefined ? 0 : requireNumber(borderRaw['dash'], 'border.dash', 0.5, 200),
+    ...resolveFill(borderRaw, 'border', { color: dots.color }),
+  };
+
   const imageRaw = readRecord(raw, 'image', 'image');
   const src = imageRaw['src'] === undefined || imageRaw['src'] === '' ? undefined : sanitizeImageSrc(imageRaw['src'], 'image.src');
   if (src && src.length > LIMITS.maxImageBytes) {
@@ -314,6 +330,10 @@ export function resolveDesign(input: QrDesign): ResolvedDesign {
     text: captionText,
     position: requireOneOf(captionRaw['position'] ?? 'bottom', 'caption.position', ['bottom', 'top'] as const),
     color: captionRaw['color'] === undefined ? dots.color : sanitizeColor(captionRaw['color'], 'caption.color'),
+    background:
+      captionRaw['background'] === undefined || captionRaw['background'] === 'none'
+        ? 'none'
+        : sanitizeColor(captionRaw['background'], 'caption.background'),
     fontFamily: typeof captionRaw['fontFamily'] === 'string' && captionRaw['fontFamily'].length <= 120
       ? captionRaw['fontFamily'].replace(/[<>&"]/g, '')
       : DEFAULT_FONT_STACK,
@@ -378,6 +398,7 @@ export function resolveDesign(input: QrDesign): ResolvedDesign {
     cornersDot: { ...cornersDotBase, corners: perCornerDot },
     alignment,
     background,
+    border,
     image,
     emblem,
     caption,

@@ -19,6 +19,7 @@ import {
   modulePath,
   roundedRectPath,
   type Neighbors,
+  type Radii,
 } from './shapes.js';
 
 interface Box {
@@ -115,17 +116,24 @@ export function renderSvg(design: QrDesign): RenderResult {
   const { width, height, margin, quietZone } = resolved;
   const captionHeight = resolved.caption.text ? resolved.caption.fontSize * 1.35 + resolved.caption.gap : 0;
   const modulesAcross = symbol.size + quietZone * 2;
-  const availableWidth = width - margin * 2;
-  const availableHeight = height - margin * 2 - captionHeight;
+  // The border sits at the edge of the canvas, so everything inside it — the
+  // margin, the symbol and the caption — starts after its thickness and gap.
+  const frameInset = resolved.border.width > 0 ? resolved.border.width + resolved.border.gap : 0;
+  const inset = margin + frameInset;
+  const availableWidth = width - inset * 2;
+  const availableHeight = height - inset * 2 - captionHeight;
   if (availableWidth <= 0 || availableHeight <= 0) {
-    throw new Error('The margin and caption leave no room for the QR code; increase width or height.');
+    throw new Error(
+      'The border, margin and caption leave no room for the QR code; increase the width or height, ' +
+        'or reduce them.',
+    );
   }
 
   const modulePixelSize = Math.min(availableWidth, availableHeight) / modulesAcross;
   const drawnSize = modulePixelSize * modulesAcross;
-  const originX = margin + (availableWidth - drawnSize) / 2;
+  const originX = inset + (availableWidth - drawnSize) / 2;
   const originY =
-    margin + (availableHeight - drawnSize) / 2 + (resolved.caption.position === 'top' ? captionHeight : 0);
+    inset + (availableHeight - drawnSize) / 2 + (resolved.caption.position === 'top' ? captionHeight : 0);
   const gridX = originX + quietZone * modulePixelSize;
   const gridY = originY + quietZone * modulePixelSize;
   const symbolBox: Box = {
@@ -234,11 +242,25 @@ export function renderSvg(design: QrDesign): RenderResult {
     body.push(renderImage(resolved, symbolBox, modulePixelSize));
   }
 
-  // Caption.
+  // Caption, on an optional band that fills the width inside the border.
   if (resolved.caption.text) {
+    if (resolved.caption.background !== 'none') {
+      const bandTop =
+        resolved.caption.position === 'top' ? frameInset : height - frameInset - captionHeight;
+      const outerRadius = (resolved.border.radius * Math.min(width, height)) / 2;
+      const bandRadius = Math.max(0, outerRadius - frameInset);
+      const corners: Radii =
+        resolved.caption.position === 'top'
+          ? [bandRadius, bandRadius, 0, 0]
+          : [0, 0, bandRadius, bandRadius];
+      body.push(
+        `<path fill="${resolved.caption.background}" ` +
+          `d="${roundedRectPath(frameInset, bandTop, width - frameInset * 2, captionHeight, corners)}"/>`,
+      );
+    }
     const baseline =
       resolved.caption.position === 'top'
-        ? margin + resolved.caption.fontSize
+        ? inset + resolved.caption.fontSize
         : originY + drawnSize + resolved.caption.gap + resolved.caption.fontSize * 0.85;
     body.push(
       `<text x="${num(width / 2)}" y="${num(baseline)}" text-anchor="middle" ` +
@@ -247,6 +269,12 @@ export function renderSvg(design: QrDesign): RenderResult {
         `${resolved.caption.letterSpacing ? `letter-spacing="${num(resolved.caption.letterSpacing)}" ` : ''}` +
         `fill="${resolved.caption.color}">${escapeXml(resolved.caption.text)}</text>`,
     );
+  }
+
+  // The border is drawn last so it sits above the background, the caption band
+  // and anything that reaches the edge.
+  if (resolved.border.width > 0) {
+    body.push(...renderBorder(resolved, defs, width, height));
   }
 
   const defsBlock = defs.render();
@@ -280,6 +308,49 @@ export function renderSvg(design: QrDesign): RenderResult {
   };
 
   return { svg, meta };
+}
+
+/**
+ * The frame around the whole image. Strokes are centred on their path, so each
+ * line is inset by half its own thickness to keep it inside the canvas.
+ */
+function renderBorder(design: ResolvedDesign, defs: Defs, width: number, height: number): string[] {
+  const { width: thickness, style, radius, dash } = design.border;
+  const box: Box = { x: 0, y: 0, width, height };
+  const paint = defs.paint(design.border, box);
+  const opacity = design.border.opacity < 1 ? ` stroke-opacity="${num(design.border.opacity)}"` : '';
+
+  const line = (lineWidth: number, centreInset: number, extra = ''): string => {
+    const outerRadius = (radius * Math.min(width, height)) / 2;
+    const cornerRadius = Math.max(0, outerRadius - centreInset);
+    const path = roundedRectPath(
+      centreInset,
+      centreInset,
+      width - centreInset * 2,
+      height - centreInset * 2,
+      [cornerRadius, cornerRadius, cornerRadius, cornerRadius],
+    );
+    return `<path fill="none" stroke="${paint}" stroke-width="${num(lineWidth)}"${opacity}${extra} d="${path}"/>`;
+  };
+
+  switch (style) {
+    case 'solid':
+      return [line(thickness, thickness / 2)];
+    case 'dashed': {
+      const length = dash || thickness * 3;
+      return [line(thickness, thickness / 2, ` stroke-dasharray="${num(length)} ${num(length * 0.6)}"`)];
+    }
+    case 'dotted': {
+      const spacing = dash || thickness * 2;
+      // A zero-length dash with round caps draws a dot of the stroke's width.
+      return [line(thickness, thickness / 2, ` stroke-linecap="round" stroke-dasharray="0 ${num(spacing)}"`)];
+    }
+    case 'double': {
+      // Two lines of a quarter the thickness, at its outer and inner edges.
+      const lineWidth = thickness / 4;
+      return [line(lineWidth, lineWidth / 2), line(lineWidth, thickness - lineWidth / 2)];
+    }
+  }
 }
 
 function qrLabel(data: string): string {
