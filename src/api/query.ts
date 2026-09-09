@@ -4,7 +4,7 @@ import { FIELDS_BY_PATH } from './schema.js';
 import { findPreset } from '../presets.js';
 
 /** Query keys handled by the transport rather than the design itself. */
-export const TRANSPORT_KEYS = new Set(['format', 'scale', 'preset', 'download', 'pretty']);
+export const TRANSPORT_KEYS = new Set(['format', 'scale', 'preset', 'download', 'pretty', 'dpi', 'flatten']);
 
 function assignPath(target: Record<string, unknown>, path: string, value: unknown): void {
   const segments = path.split('.');
@@ -80,27 +80,40 @@ export function designFromQuery(params: URLSearchParams): QrDesign {
 }
 
 export interface TransportOptions {
-  format: 'svg' | 'png';
+  format: 'svg' | 'png' | 'psd';
   scale: number;
   download: boolean;
   pretty: boolean;
+  /** Resolution written into a PSD, in pixels per inch. */
+  dpi: number;
+  /** Write a PSD as one flattened layer instead of keeping them separate. */
+  flatten: boolean;
 }
 
 export function transportFromQuery(params: URLSearchParams): TransportOptions {
   const format = params.get('format') ?? 'svg';
-  if (format !== 'svg' && format !== 'png') {
-    throw new DesignError('format must be "svg" or "png"');
+  if (format !== 'svg' && format !== 'png' && format !== 'psd') {
+    throw new DesignError('format must be "svg", "png" or "psd"');
   }
   const scaleRaw = params.get('scale');
   const scale = scaleRaw === null ? 1 : Number(scaleRaw);
   if (!Number.isFinite(scale) || scale < 0.25 || scale > 8) {
     throw new DesignError('scale must be a number between 0.25 and 8');
   }
+  const dpiRaw = params.get('dpi');
+  const dpi = dpiRaw === null ? 72 : Number(dpiRaw);
+  if (!Number.isFinite(dpi) || dpi < 1 || dpi > 2400) {
+    throw new DesignError('dpi must be a number between 1 and 2400');
+  }
+
+  const isTrue = (key: string): boolean => params.get(key) === 'true' || params.get(key) === '1';
   return {
     format,
     scale,
-    download: params.get('download') === 'true' || params.get('download') === '1',
-    pretty: params.get('pretty') === 'true' || params.get('pretty') === '1',
+    dpi,
+    flatten: isTrue('flatten'),
+    download: isTrue('download'),
+    pretty: isTrue('pretty'),
   };
 }
 

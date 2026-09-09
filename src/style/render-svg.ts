@@ -102,7 +102,22 @@ function idPrefix(design: ResolvedDesign): string {
   return `qr${(hash >>> 0).toString(36)}`;
 }
 
-export function renderSvg(design: QrDesign): RenderResult {
+/** One named piece of the drawing, for export formats that carry layers. */
+export interface RenderLayer {
+  name: string;
+  /** The SVG fragment for this layer, without the surrounding document. */
+  content: string;
+}
+
+interface LayeredRender extends RenderResult {
+  layers: RenderLayer[];
+  /** Shared gradient and clip definitions every layer fragment may reference. */
+  defs: string;
+  width: number;
+  height: number;
+}
+
+function buildRender(design: QrDesign): LayeredRender {
   const resolved = resolveDesign(design);
   const symbol = encodeQr(resolved.data, {
     errorCorrectionLevel: resolved.encoding.errorCorrectionLevel,
@@ -150,26 +165,30 @@ export function renderSvg(design: QrDesign): RenderResult {
 
   const defs = new Defs(idPrefix(resolved));
   const body: string[] = [];
+  // The same drawing, kept split by role so it can be exported as layers.
+  const layers: RenderLayer[] = [];
 
   // Background plate.
   if (resolved.background.color !== 'none' || resolved.background.gradient) {
     const box: Box = { x: 0, y: 0, width, height };
     const radius = (resolved.background.round * Math.min(width, height)) / 2;
-    body.push(
+    const plate =
       `<path ${fillAttributes(defs.paint(resolved.background, box), resolved.background.opacity)} ` +
-        `d="${roundedRectPath(0, 0, width, height, [radius, radius, radius, radius])}"/>`,
-    );
+      `d="${roundedRectPath(0, 0, width, height, [radius, radius, radius, radius])}"/>`;
+    body.push(plate);
+    layers.push({ name: 'Background', content: plate });
   }
 
-  const symbolParts: string[] = [];
+  const symbolParts: { name: string; content: string }[] = [];
 
   // Data modules (everything except the finder patterns and, optionally, the
   // alignment patterns) drawn as one path per fill.
   const dataPath = renderDataModules(grid, symbol.size, gridX, gridY, modulePixelSize, resolved);
   if (dataPath) {
-    symbolParts.push(
-      `<path ${fillAttributes(defs.paint(resolved.dots, symbolBox), resolved.dots.opacity)} d="${dataPath}"/>`,
-    );
+    symbolParts.push({
+      name: 'Modules',
+      content: `<path ${fillAttributes(defs.paint(resolved.dots, symbolBox), resolved.dots.opacity)} d="${dataPath}"/>`,
+    });
   }
 
   // The emblem's modules, drawn in their own colour on top of the data path.
@@ -181,9 +200,10 @@ export function renderSvg(design: QrDesign): RenderResult {
         : { ...resolved, dots: { ...resolved.dots, type: resolved.emblem.dotType } };
     const path = renderDataModules(emblemGrid, symbol.size, gridX, gridY, modulePixelSize, emblemDesign);
     if (path) {
-      symbolParts.push(
-        `<path ${fillAttributes(defs.paint(resolved.emblem, symbolBox), resolved.emblem.opacity)} d="${path}"/>`,
-      );
+      symbolParts.push({
+        name: 'Emblem',
+        content: `<path ${fillAttributes(defs.paint(resolved.emblem, symbolBox), resolved.emblem.opacity)} d="${path}"/>`,
+      });
     }
   }
 
@@ -210,40 +230,58 @@ export function renderSvg(design: QrDesign): RenderResult {
       })
       .join('');
     if (alignmentPath) {
-      symbolParts.push(
-        `<path fill-rule="evenodd" ` +
+      symbolParts.push({
+        name: 'Alignment patterns',
+        content:
+          `<path fill-rule="evenodd" ` +
           `${fillAttributes(defs.paint(resolved.alignment, symbolBox), resolved.alignment.opacity)} ` +
           `d="${alignmentPath}"/>`,
-      );
+      });
     }
   }
 
   // Finder patterns: the 7x7 ring and the 3x3 centre, each stylable per corner.
-  symbolParts.push(...renderFinders(symbol, resolved, defs, gridX, gridY, modulePixelSize, symbolBox));
+  symbolParts.push({
+    name: 'Finder patterns',
+    content: renderFinders(symbol, resolved, defs, gridX, gridY, modulePixelSize, symbolBox).join(''),
+  });
 
-  let symbolGroup = symbolParts.join('');
-  if (resolved.rotation % 360 !== 0) {
-    const cx = originX + drawnSize / 2;
-    const cy = originY + drawnSize / 2;
-    symbolGroup = `<g transform="rotate(${num(resolved.rotation)} ${num(cx)} ${num(cy)})">${symbolGroup}</g>`;
-  }
+  // Rotation and circular cropping apply to the symbol as a whole, so the same
+  // wrapper goes around the combined drawing and around each exported layer.
+  let clipId: string | null = null;
   if (resolved.shape === 'circle') {
-    const clipId = `${idPrefix(resolved)}-clip`;
+    clipId = `${idPrefix(resolved)}-clip`;
     defs.add(
       `<clipPath id="${clipId}"><circle cx="${num(originX + drawnSize / 2)}" ` +
         `cy="${num(originY + drawnSize / 2)}" r="${num(drawnSize / 2)}"/></clipPath>`,
     );
-    symbolGroup = `<g clip-path="url(#${clipId})">${symbolGroup}</g>`;
   }
-  body.push(symbolGroup);
+  const wrapSymbol = (content: string): string => {
+    let wrapped = content;
+    if (resolved.rotation % 360 !== 0) {
+      const cx = originX + drawnSize / 2;
+      const cy = originY + drawnSize / 2;
+      wrapped = `<g transform="rotate(${num(resolved.rotation)} ${num(cx)} ${num(cy)})">${wrapped}</g>`;
+    }
+    if (clipId) wrapped = `<g clip-path="url(#${clipId})">${wrapped}</g>`;
+    return wrapped;
+  };
+
+  body.push(wrapSymbol(symbolParts.map((part) => part.content).join('')));
+  for (const part of symbolParts) {
+    if (part.content) layers.push({ name: part.name, content: wrapSymbol(part.content) });
+  }
 
   // Logo.
   if (resolved.image.src) {
-    body.push(renderImage(resolved, symbolBox, modulePixelSize));
+    const logo = renderImage(resolved, symbolBox, modulePixelSize);
+    body.push(logo);
+    layers.push({ name: 'Logo', content: logo });
   }
 
   // Caption, on an optional band that fills the width inside the border.
   if (resolved.caption.text) {
+    const captionParts: string[] = [];
     if (resolved.caption.background !== 'none') {
       const bandTop =
         resolved.caption.position === 'top' ? frameInset : height - frameInset - captionHeight;
@@ -253,7 +291,7 @@ export function renderSvg(design: QrDesign): RenderResult {
         resolved.caption.position === 'top'
           ? [bandRadius, bandRadius, 0, 0]
           : [0, 0, bandRadius, bandRadius];
-      body.push(
+      captionParts.push(
         `<path fill="${resolved.caption.background}" ` +
           `d="${roundedRectPath(frameInset, bandTop, width - frameInset * 2, captionHeight, corners)}"/>`,
       );
@@ -262,19 +300,23 @@ export function renderSvg(design: QrDesign): RenderResult {
       resolved.caption.position === 'top'
         ? inset + resolved.caption.fontSize
         : originY + drawnSize + resolved.caption.gap + resolved.caption.fontSize * 0.85;
-    body.push(
+    captionParts.push(
       `<text x="${num(width / 2)}" y="${num(baseline)}" text-anchor="middle" ` +
         `font-family="${resolved.caption.fontFamily}" font-size="${num(resolved.caption.fontSize)}" ` +
         `font-weight="${resolved.caption.fontWeight}" ` +
         `${resolved.caption.letterSpacing ? `letter-spacing="${num(resolved.caption.letterSpacing)}" ` : ''}` +
         `fill="${resolved.caption.color}">${escapeXml(resolved.caption.text)}</text>`,
     );
+    body.push(...captionParts);
+    layers.push({ name: 'Caption', content: captionParts.join('') });
   }
 
   // The border is drawn last so it sits above the background, the caption band
   // and anything that reaches the edge.
   if (resolved.border.width > 0) {
-    body.push(...renderBorder(resolved, defs, width, height));
+    const borderParts = renderBorder(resolved, defs, width, height);
+    body.push(...borderParts);
+    layers.push({ name: 'Border', content: borderParts.join('') });
   }
 
   const defsBlock = defs.render();
@@ -307,7 +349,37 @@ export function renderSvg(design: QrDesign): RenderResult {
     warnings: collectWarnings(resolved, symbol, modulePixelSize, hidden, emblem, damage),
   };
 
+  return { svg, meta, layers, defs: defsBlock.join(''), width, height };
+}
+
+export function renderSvg(design: QrDesign): RenderResult {
+  const { svg, meta } = buildRender(design);
   return { svg, meta };
+}
+
+export interface LayeredResult extends RenderResult {
+  /** Each layer as a complete SVG document, in bottom-to-top stacking order. */
+  layers: RenderLayer[];
+  width: number;
+  height: number;
+}
+
+/**
+ * The drawing split into named layers, each a complete SVG document of the same
+ * size, so that stacking them reproduces the flat rendering exactly.
+ */
+export function renderLayers(design: QrDesign): LayeredResult {
+  const result = buildRender(design);
+  const layers = result.layers.map((layer) => ({
+    name: layer.name,
+    content:
+      `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" ` +
+      `width="${num(result.width)}" height="${num(result.height)}" ` +
+      `viewBox="0 0 ${num(result.width)} ${num(result.height)}">` +
+      (result.defs ? `<defs>${result.defs}</defs>` : '') +
+      `${layer.content}</svg>`,
+  }));
+  return { svg: result.svg, meta: result.meta, layers, width: result.width, height: result.height };
 }
 
 /**

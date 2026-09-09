@@ -100,6 +100,42 @@ layout, not estimated from the area covered, and the test suite checks that
 does not fit, you get a warning saying so — and raising the error correction
 level or shrinking the shape is what fixes it.
 
+## Getting it into Photoshop
+
+`format=psd` writes a **layered** Photoshop file. Each part of the drawing —
+background, modules, finder patterns, emblem, logo, caption, border — is
+rasterized on its own transparent canvas and written as a separate layer, so the
+design arrives as something you can still take apart:
+
+```bash
+npx qr-coder "https://example.com" --preset=framed --scale=2 --dpi=300 -o code.psd
+# Wrote code.psd (5 layers: Background, Modules, Finder patterns, Caption, Border)
+```
+
+```
+/api/qr?data=https://example.com&format=psd&scale=2&dpi=300
+```
+
+`scale` multiplies the design's pixel size, `dpi` is the resolution recorded in
+the file (72 by default; use 300 for print), and `flatten=true` collapses
+everything into one layer. PSD needs the optional `@resvg/resvg-js` and `ag-psd`
+dependencies, and Photoshop's own 30,000 pixel limit applies.
+
+PSD layers are pixels, so the file is resolution-fixed. **If you want to
+rescale freely, place the SVG instead**: in Photoshop use File → Place Embedded
+rather than File → Open, which keeps the vector inside a Smart Object. Two
+things to know when you do:
+
+- A logo with `image.shape` set to `rounded` or `circle` is clipped with CSS
+  `clip-path: inset()`, which Adobe's SVG importer ignores — the logo arrives
+  square. Pre-crop the logo file, or export PSD or PNG for that design.
+- The default caption font stack starts with `system-ui`, which Photoshop cannot
+  resolve. Set `caption.fontFamily` to a font installed on the machine.
+
+For print, convert to CMYK and set the modules to 100% K rather than a rich
+black: four plates on small modules pick up registration fuzz exactly where a
+scanner needs clean edges.
+
 ## Borders and frames
 
 `border` draws a frame around the whole image. It takes its thickness from
@@ -158,8 +194,9 @@ Gradient stops are written as `offset:colour` pairs:
        &dots.gradient.colorStops=0:%23f97316,1:%23db2777
 ```
 
-Transport parameters, separate from the design: `format` (`svg` or `png`),
-`scale` (PNG resolution multiplier, 0.25–8), `preset`, `download`, `pretty`.
+Transport parameters, separate from the design: `format` (`svg`, `png` or
+`psd`), `scale` (resolution multiplier for `png` and `psd`, 0.25–8), `dpi` and
+`flatten` for PSD, plus `preset`, `download` and `pretty`.
 
 ### `POST /api/qr`
 
@@ -217,9 +254,18 @@ console.log(meta.version, meta.warnings);
 const { png } = await renderPng({ data: 'https://example.com' }, { scale: 2 });
 ```
 
+```ts
+import { renderPsd } from 'qr-coder';
+
+const { psd, layerNames } = await renderPsd({ data: 'https://example.com' }, { scale: 2, dpi: 300 });
+// layerNames: ['Background', 'Modules', 'Finder patterns']
+```
+
 `renderSvg` is dependency-free and runs in the browser as well as in Node.
-`renderPng` needs the optional `@resvg/resvg-js` dependency; without it, render
-SVG and rasterize wherever you prefer.
+`renderPng` needs the optional `@resvg/resvg-js` dependency and `renderPsd` also
+needs `ag-psd`; without them, render SVG and convert wherever you prefer.
+`renderLayers` returns the same drawing split into named SVG documents, which is
+what the PSD writer builds on.
 
 ## CLI
 
@@ -280,6 +326,8 @@ client, `0` disables), `QR_CORS_ORIGIN`, `QR_PUBLIC_DIR`.
   number the service quotes is the number that matters.
 - **Service**: the API is exercised over real HTTP, including validation
   failures, rate limiting and path traversal attempts.
+- **PSD**: generated files are read back and checked layer by layer, and the
+  flattened composite is decoded to confirm the exported artwork still scans.
 
 ### Layout
 
@@ -287,7 +335,7 @@ client, `0` disables), `QR_CORS_ORIGIN`, `QR_PUBLIC_DIR`.
 src/core/     QR encoding: Reed-Solomon, segmentation, matrix layout, masking,
               and the per-module codeword map the error budget is measured with
 src/style/    Design resolution, shape geometry, SVG rendering, emblems,
-              borders, image tracing, contrast checks
+              borders, image tracing, contrast checks, PNG and layered PSD
 src/api/      HTTP service, field schema, query parsing
 public/       The playground
 test/         Encoder, render and API tests

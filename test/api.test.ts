@@ -324,3 +324,26 @@ test('a border can be described in a query string', async () => {
     assert.equal(decodeSvg(svg, 700), PAYLOAD);
   });
 });
+
+test('PSD is served with the Photoshop content type', async () => {
+  await withServer(async (base) => {
+    const response = await fetch(`${base}/api/qr?data=${encodeURIComponent(PAYLOAD)}&width=200&format=psd&dpi=300`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-type'), 'image/vnd.adobe.photoshop');
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    assert.equal(String.fromCharCode(...bytes.slice(0, 4)), '8BPS', 'not a PSD signature');
+  });
+});
+
+test('PSD transport options are validated', async () => {
+  await withServer(async (base) => {
+    for (const [query, pattern] of [
+      ['format=psd&dpi=99999', /dpi must be a number between/],
+      ['format=tiff', /format must be "svg", "png" or "psd"/],
+    ] as const) {
+      const response = await fetch(`${base}/api/qr?data=hi&${query}`);
+      assert.equal(response.status, 400);
+      assert.match(((await response.json()) as { error: string }).error, pattern);
+    }
+  });
+});
