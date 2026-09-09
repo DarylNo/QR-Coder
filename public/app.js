@@ -632,6 +632,30 @@ document.getElementById('download-png').addEventListener('click', async () => {
   }
 });
 
+document.getElementById('download-psd').addEventListener('click', async () => {
+  if (!lastRender) return;
+  // A PSD is assembled on the server: it needs a rasterizer per layer.
+  const scale = Number(document.getElementById('png-scale').value);
+  const button = document.getElementById('download-psd');
+  button.disabled = true;
+  try {
+    const response = await fetch(`/api/qr?format=psd&scale=${scale}&dpi=300`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(lastRender.design),
+    });
+    if (!response.ok) {
+      const problem = await response.json().catch(() => ({ error: 'PSD export failed.' }));
+      notify(problem.error ?? 'PSD export failed.');
+      return;
+    }
+    download(await response.blob(), 'qr-code.psd');
+    notify('Layered PSD downloaded at 300 DPI.');
+  } finally {
+    button.disabled = false;
+  }
+});
+
 document.getElementById('copy-svg').addEventListener('click', () => {
   if (lastRender) copy(lastRender.svg, 'SVG copied to the clipboard.');
 });

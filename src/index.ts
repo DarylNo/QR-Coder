@@ -7,6 +7,8 @@
  */
 export { renderSvg } from './style/render-svg.js';
 export { renderPng, svgDataUri, type RasterOptions, type RasterResult } from './style/raster.js';
+export { renderPsd, type PsdOptions, type PsdResult } from './style/psd.js';
+export { renderLayers, type RenderLayer, type LayeredResult } from './style/render-svg.js';
 export { resolveDesign, LIMITS } from './style/defaults.js';
 export {
   imageToGrid,

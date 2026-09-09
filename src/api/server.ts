@@ -4,6 +4,7 @@ import { extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { renderSvg } from '../style/render-svg.js';
 import { renderPng } from '../style/raster.js';
+import { renderPsd } from '../style/psd.js';
 import { DesignError } from '../style/sanitize.js';
 import type { QrDesign, RenderMeta } from '../style/types.js';
 import { PRESETS } from '../presets.js';
@@ -20,6 +21,7 @@ const CONTENT_TYPES: Record<string, string> = {
   '.js': 'text/javascript; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.psd': 'image/vnd.adobe.photoshop',
   '.ico': 'image/x-icon',
   '.json': 'application/json; charset=utf-8',
   '.woff2': 'font/woff2',
@@ -164,7 +166,7 @@ async function handleRender(
       const merged = applyPreset(body);
       design = merged as unknown as QrDesign;
       const params = new URLSearchParams(url.search);
-      for (const key of ['format', 'scale', 'download', 'pretty']) {
+      for (const key of ['format', 'scale', 'download', 'pretty', 'dpi', 'flatten']) {
         const value = merged[key];
         if (value !== undefined && !params.has(key)) params.set(key, String(value));
       }
@@ -182,6 +184,18 @@ async function handleRender(
   }
 
   try {
+    if (transport.format === 'psd') {
+      const { psd, meta } = await renderPsd(design, { scale: transport.scale, dpi: transport.dpi, flatten: transport.flatten });
+      writeImageHeaders(
+        response,
+        config,
+        meta,
+        'image/vnd.adobe.photoshop',
+        transport.download ? 'qr-code.psd' : null,
+      );
+      response.end(Buffer.from(psd));
+      return;
+    }
     if (transport.format === 'png') {
       const { png, meta } = await renderPng(design, { scale: transport.scale });
       writeImageHeaders(response, config, meta, 'image/png', transport.download ? 'qr-code.png' : null);

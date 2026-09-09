@@ -2,6 +2,7 @@
 import { writeFile } from 'node:fs/promises';
 import { renderSvg } from './style/render-svg.js';
 import { renderPng } from './style/raster.js';
+import { renderPsd } from './style/psd.js';
 import { PRESETS } from './presets.js';
 import { FIELDS, groupedFields } from './api/schema.js';
 import { designFromQuery } from './api/query.js';
@@ -13,8 +14,10 @@ Usage:
 
 Options:
   -o, --out <file>        Write to a file; the extension picks the format
-      --format <svg|png>  Output format when no file extension says otherwise
-      --scale <n>         PNG resolution multiplier (0.25-8)
+      --format <fmt>      svg, png or psd, when no file extension says otherwise
+      --scale <n>         Resolution multiplier for png and psd (0.25-8)
+      --dpi <n>           Resolution recorded in a psd (default 72)
+      --flatten           Write a psd as one layer instead of several
       --preset <id>       Start from a preset, then apply any overrides
       --list-presets      Print the available presets
       --list-settings     Print every design setting
@@ -66,6 +69,7 @@ async function main(argv: string[]): Promise<number> {
   let data: string | undefined;
   let out: string | undefined;
   let format: string | undefined;
+  let flatten = false;
 
   for (let i = 0; i < argv.length; i++) {
     const argument = argv[i]!;
@@ -78,7 +82,7 @@ async function main(argv: string[]): Promise<number> {
       const key = separator === -1 ? argument.slice(2) : argument.slice(2, separator);
       const value = separator === -1 ? (argv[++i] ?? '') : argument.slice(separator + 1);
       if (key === 'format') format = value;
-      else if (key === 'scale' || key === 'preset') params.set(key, value);
+      else if (key === 'flatten') flatten = true;
       else params.set(key, value);
       continue;
     }
@@ -90,12 +94,23 @@ async function main(argv: string[]): Promise<number> {
   if (data !== undefined) params.set('data', data);
 
   const design = designFromQuery(params);
-  const resolvedFormat = format ?? (out?.endsWith('.png') ? 'png' : 'svg');
-  if (resolvedFormat !== 'svg' && resolvedFormat !== 'png') {
-    throw new Error('--format must be "svg" or "png"');
+  const byExtension = out?.endsWith('.png') ? 'png' : out?.endsWith('.psd') ? 'psd' : 'svg';
+  const resolvedFormat = format ?? byExtension;
+  if (resolvedFormat !== 'svg' && resolvedFormat !== 'png' && resolvedFormat !== 'psd') {
+    throw new Error('--format must be "svg", "png" or "psd"');
   }
 
   const scale = params.has('scale') ? Number(params.get('scale')) : 1;
+  const dpi = params.has('dpi') ? Number(params.get('dpi')) : 72;
+
+  if (resolvedFormat === 'psd') {
+    if (!out) throw new Error('PSD output needs --out, since it cannot be written to the terminal');
+    const { psd, meta, layerNames } = await renderPsd(design, { scale, dpi, flatten });
+    await writeFile(out, psd);
+    reportWarnings(meta.warnings);
+    process.stderr.write(`Wrote ${out} (${layerNames.length} layers: ${layerNames.join(', ')})\n`);
+    return 0;
+  }
 
   if (resolvedFormat === 'png') {
     const { png, meta } = await renderPng(design, { scale });

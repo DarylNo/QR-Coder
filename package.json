@@ -47,6 +47,8 @@
     "typescript": "^5.7.2"
   },
   "optionalDependencies": {
-    "@resvg/resvg-js": "^2.6.2"
-  }
+    "@resvg/resvg-js": "^2.6.2",
+    "ag-psd": "^31.0.2"
+  },
+  "dependencies": {}
 }
